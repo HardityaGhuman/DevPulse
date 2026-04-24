@@ -1,0 +1,108 @@
+@import "tailwindcss";
+
+/* ===== DevPulse Design System ===== */
+
+@theme {
+  --color-background: #0a0a0a;
+  --color-surface: #111111;
+  --color-surface-alt: #1a1a1a;
+  --color-border: #222222;
+  --color-border-hover: #3b82f6;
+  --color-primary: #f1f5f9;
+  --color-muted: #64748b;
+  --color-accent: #3b82f6;
+  --color-success: #22c55e;
+  --color-destructive: #ef4444;
+  --color-code-bg: #0d1117;
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+  --radius-card: 8px;
+}
+
+/* ===== Base Styles ===== */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-background);
+  color: var(--color-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.6;
+}
+
+/* ===== Scrollbar ===== */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-muted);
+}
+
+/* ===== Selection ===== */
+
+::selection {
+  background-color: rgba(59, 130, 246, 0.3);
+  color: var(--color-primary);
+}
+
+/* ===== Code Blocks ===== */
+
+pre, code {
+  font-family: var(--font-mono);
+}
+
+pre {
+  background-color: var(--color-code-bg);
+  border-radius: var(--radius-card);
+  padding: 1rem;
+  overflow-x: auto;
+  font-size: 0.875rem;
+  line-height: 1.7;
+}
+
+/* ===== Hero Gradient Text ===== */
+
+.gradient-text {
+  background: linear-gradient(180deg, #f1f5f9 0%, #64748b 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ===== Card Styles ===== */
+
+.card {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  transition: border-color 150ms ease;
+}
+
+.card:hover {
+  border-color: var(--color-border-hover);
+}
+
+/* ===== Focus Styles ===== */
+
+*:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
