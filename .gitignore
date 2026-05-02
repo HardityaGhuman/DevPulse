@@ -1,30 +1,63 @@
 # Dependencies
 node_modules/
 venv/
+.venv/
+env/
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
 # Environment
 .env
 .env.local
 .env.*.local
+.env.development
+.env.test
+.env.production
+.flaskenv
 
-# Build
-dist/
-build/
-*.egg-info/
-
-# IDE
+# IDE & OS
 .vscode/
+!.vscode/extensions.json
 .idea/
 *.swp
 *.swo
 .DS_Store
+Thumbs.db
 
 # Logs
 *.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Vercel
+# Deployment
 .vercel/
+.serverless/
+.terraform/
+dist/
+build/
+out/
+.next/
+
+# Project Specific
+scratch/
+database/*.db
+database/*.sqlite
