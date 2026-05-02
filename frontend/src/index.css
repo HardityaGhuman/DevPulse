@@ -1,39 +1,134 @@
 @import "tailwindcss";
 
-/* ===== DevPulse Design System ===== */
+/* ===== DevPulse Design System v2 - Theme Variables ===== */
+
+:root {
+  --background: #fdfdfd;
+  --surface: #f8fafc;
+  --surface-raised: #ffffff;
+  --border: rgba(15, 23, 42, 0.08);
+  --border-hover: rgba(59, 130, 246, 0.3);
+  --primary: #0f172a;
+  --muted: #64748b;
+  --accent: #3b82f6;
+  --accent-alt: #8b5cf6;
+  --success: #10b981;
+  --destructive: #f43f5e;
+  --code-bg: #f1f5f9;
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-card-bg: rgba(255, 255, 255, 0.4);
+}
+
+:root.dark {
+  --background: #050505;
+  --surface: #0a0a0a;
+  --surface-raised: #111111;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(59, 130, 246, 0.5);
+  --primary: #ffffff;
+  --muted: #94a3b8;
+  --accent: #3b82f6;
+  --accent-alt: #8b5cf6;
+  --success: #10b981;
+  --destructive: #f43f5e;
+  --code-bg: #0d1117;
+  --glass-bg: rgba(10, 10, 10, 0.7);
+  --glass-card-bg: rgba(17, 17, 17, 0.4);
+}
 
 @theme {
-  --color-background: #0a0a0a;
-  --color-surface: #111111;
-  --color-surface-alt: #1a1a1a;
-  --color-border: #222222;
-  --color-border-hover: #3b82f6;
-  --color-primary: #f1f5f9;
-  --color-muted: #64748b;
-  --color-accent: #3b82f6;
-  --color-success: #22c55e;
-  --color-destructive: #ef4444;
-  --color-code-bg: #0d1117;
-  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-border: var(--border);
+  --color-border-hover: var(--border-hover);
+  --color-primary: var(--primary);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-alt: var(--accent-alt);
+  --color-success: var(--success);
+  --color-destructive: var(--destructive);
+  --color-code-bg: var(--code-bg);
+  
+  --font-sans: "Outfit", "Inter", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
-  --radius-card: 8px;
+  
+  --radius-card: 24px;
+  --radius-button: 12px;
 }
 
 /* ===== Base Styles ===== */
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    font-family: var(--font-sans);
+    background-color: var(--color-background);
+    color: var(--color-primary);
+    transition: background-color 0.3s ease, color 0.3s ease;
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.6;
+    background-image: 
+      radial-gradient(circle at 50% 0%, rgba(59, 130, 246, 0.05) 0%, transparent 50%),
+      radial-gradient(circle at 100% 100%, rgba(139, 92, 246, 0.05) 0%, transparent 50%);
+    background-attachment: fixed;
+  }
 }
 
-body {
-  font-family: var(--font-sans);
-  background-color: var(--color-background);
-  color: var(--color-primary);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  line-height: 1.6;
+/* ===== Glassmorphism & Effects ===== */
+
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--color-border);
+}
+
+.glass-card {
+  background: var(--glass-card-bg);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+.dark .glass-card {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.glass-card:hover {
+  border-color: var(--color-border-hover);
+  background: var(--surface-raised);
+}
+
+.gradient-border {
+  position: relative;
+}
+
+.gradient-border::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-alt));
+  z-index: -1;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.gradient-border:hover::after {
+  opacity: 0.5;
+}
+
+/* ===== Hero Gradient Text ===== */
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--color-primary) 30%, var(--color-accent) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 0 20px rgba(59, 130, 246, 0.2));
 }
 
 /* ===== Scrollbar ===== */
@@ -48,61 +143,65 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border);
-  border-radius: 3px;
+  background: var(--border-hover);
+  border-radius: 100px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-muted);
+  background: var(--color-accent);
 }
 
-/* ===== Selection ===== */
+/* ===== Animations ===== */
 
-::selection {
-  background-color: rgba(59, 130, 246, 0.3);
-  color: var(--color-primary);
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
 }
 
-/* ===== Code Blocks ===== */
-
-pre, code {
-  font-family: var(--font-mono);
+.animate-float {
+  animation: float 6s ease-in-out infinite;
 }
 
-pre {
-  background-color: var(--color-code-bg);
-  border-radius: var(--radius-card);
-  padding: 1rem;
-  overflow-x: auto;
-  font-size: 0.875rem;
-  line-height: 1.7;
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.05) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
 }
 
-/* ===== Hero Gradient Text ===== */
-
-.gradient-text {
-  background: linear-gradient(180deg, #f1f5f9 0%, #64748b 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
 
-/* ===== Card Styles ===== */
+/* ===== Cards & Containers ===== */
 
-.card {
-  background-color: var(--color-surface);
+.card-hover-effect {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-hover-effect:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--color-border-hover);
+}
+
+/* ===== Inputs & Textareas ===== */
+
+input, textarea, select {
+  background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-card);
-  transition: border-color 150ms ease;
+  border-radius: 8px;
+  color: var(--color-primary);
+  transition: all 0.2s ease;
 }
 
-.card:hover {
-  border-color: var(--color-border-hover);
-}
-
-/* ===== Focus Styles ===== */
-
-*:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
+input:focus, textarea:focus, select:focus {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+  outline: none;
 }

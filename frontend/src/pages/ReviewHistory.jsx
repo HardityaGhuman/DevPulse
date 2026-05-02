@@ -31,83 +31,99 @@ export default function ReviewHistory() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 max-w-5xl mx-auto pb-20">
       <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
-          <Clock className="w-6 h-6 text-muted" /> Review History
+        <h1 className="text-4xl font-black text-primary flex items-center gap-3">
+          <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center border border-white/10">
+            <Clock className="w-7 h-7 text-muted" />
+          </div>
+          Review History
         </h1>
-        <p className="text-muted mt-1">All your past code and PR reviews</p>
+        <p className="text-muted text-lg mt-3 font-medium">All your past code and PR reviews</p>
       </motion.div>
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex gap-2">
+      <div className="flex flex-col md:flex-row gap-4 items-center">
+        <div className="flex gap-2 p-1.5 bg-white/5 rounded-2xl border border-white/5">
           {["all", "code", "pr"].map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
-              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                filter === f ? "bg-accent text-white" : "bg-surface text-muted hover:text-primary border border-border"
+              className={`px-6 py-2 rounded-xl text-sm font-bold transition-all uppercase tracking-wider ${
+                filter === f ? "bg-accent text-white shadow-lg shadow-accent/20" : "text-muted hover:text-primary"
               }`}
             >
               {f === "all" ? "All" : f === "code" ? "Code" : "PR"}
             </button>
           ))}
         </div>
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" />
+        <div className="relative flex-1 w-full md:max-w-sm">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search reviews..."
-            className="w-full bg-surface border border-border rounded-lg pl-9 pr-3 py-1.5 text-sm text-primary focus:border-accent outline-none placeholder:text-muted/50"
+            placeholder="Search reviews by language or repo..."
+            className="w-full bg-white/5 border border-white/10 rounded-2xl pl-12 pr-4 py-3 text-base text-primary focus:border-accent outline-none placeholder:text-muted/30 backdrop-blur-sm"
           />
         </div>
       </div>
 
       {/* List */}
       {loading ? (
-        <div className="space-y-2">
+        <div className="space-y-4">
           {[...Array(5)].map((_, i) => (
-            <div key={i} className="card p-4 h-16 animate-pulse" />
+            <div key={i} className="glass-card p-5 h-20 rounded-2xl animate-pulse" />
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="card p-12 text-center">
-          <Clock className="w-10 h-10 text-muted mx-auto mb-3" />
-          <p className="text-muted">{reviews.length === 0 ? "No reviews yet" : "No matching reviews"}</p>
+        <div className="glass-card p-24 text-center rounded-[40px] border-dashed border-2">
+          <div className="w-20 h-20 bg-white/5 rounded-3xl flex items-center justify-center mx-auto mb-6">
+            <Clock className="w-10 h-10 text-muted" />
+          </div>
+          <p className="text-xl text-muted font-medium">
+            {reviews.length === 0 ? "No reviews yet. Start your first one!" : "No matching reviews found."}
+          </p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="grid gap-4">
           {filtered.map((review, i) => (
             <motion.div
               key={review.id}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.03 }}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.04 }}
             >
               <Link
                 to={`/review/${review.id}`}
-                className="card p-4 flex items-center justify-between group no-underline block"
+                className="glass-card p-5 flex items-center justify-between group no-underline block rounded-2xl card-hover-effect"
               >
-                <div className="flex items-center gap-3">
-                  {review.type === "code" ? (
-                    <Code2 className="w-4 h-4 text-accent" />
-                  ) : (
-                    <GitPullRequest className="w-4 h-4 text-success" />
-                  )}
+                <div className="flex items-center gap-5">
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center border border-white/5 ${
+                    review.type === "code" ? "bg-accent/10" : "bg-success/10"
+                  }`}>
+                    {review.type === "code" ? (
+                      <Code2 className="w-5 h-5 text-accent" />
+                    ) : (
+                      <GitPullRequest className="w-5 h-5 text-success" />
+                    )}
+                  </div>
                   <div>
-                    <p className="text-sm text-primary font-medium">
+                    <p className="text-lg text-primary font-bold">
                       {review.type === "pr" ? review.repo_name || "PR Review" : `${review.language || "Code"} Review`}
                     </p>
-                    <p className="text-xs text-muted">{formatRelativeTime(review.created_at)}</p>
+                    <p className="text-sm text-muted font-medium">{formatRelativeTime(review.created_at)}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-6">
                   {review.score != null && (
-                    <span className={`text-sm font-bold ${getScoreColor(review.score)}`}>{review.score}/10</span>
+                    <div className="text-right px-4 py-1.5 rounded-xl bg-white/5 border border-white/5">
+                      <span className={`text-lg font-black ${getScoreColor(review.score)}`}>{review.score}</span>
+                      <span className="text-xs text-muted font-bold ml-1">/10</span>
+                    </div>
                   )}
-                  <ArrowRight className="w-4 h-4 text-muted group-hover:text-accent transition-colors" />
+                  <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center group-hover:bg-white/10 transition-colors">
+                    <ArrowRight className="w-5 h-5 text-muted group-hover:text-primary transition-all" />
+                  </div>
                 </div>
               </Link>
             </motion.div>
