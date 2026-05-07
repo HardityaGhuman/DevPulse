@@ -15,6 +15,40 @@ security = HTTPBearer()
 _jwks_cache: dict | None = None
 
 
+def _github_username_from_clerk_user(user_data: dict) -> str | None:
+    """Extract the GitHub username from a Clerk user payload."""
+    for account in user_data.get("external_accounts", []):
+        if account.get("provider") in ("oauth_github", "github"):
+            return account.get("username")
+    return None
+
+
+async def _fetch_clerk_user(clerk_id: str) -> dict | None:
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"https://api.clerk.com/v1/users/{clerk_id}",
+            headers={"Authorization": f"Bearer {settings.clerk_secret_key}"}
+        )
+        if response.status_code == 200:
+            return response.json()
+    return None
+
+
+async def _fetch_clerk_github_token(clerk_id: str) -> str | None:
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"https://api.clerk.com/v1/users/{clerk_id}/oauth_access_tokens/oauth_github",
+            headers={"Authorization": f"Bearer {settings.clerk_secret_key}"}
+        )
+        if response.status_code != 200:
+            return None
+
+    tokens = response.json()
+    if tokens and isinstance(tokens, list):
+        return tokens[0].get("token")
+    return None
+
+
 async def _get_jwks() -> dict:
     """Fetch and cache Clerk JWKS keys."""
     global _jwks_cache
@@ -82,20 +116,15 @@ async def get_current_user(
             # Auto-provision users who are authenticated in Clerk but missing locally.
             email = payload.get("email")
             if not email:
-                async with httpx.AsyncClient() as client:
-                    user_resp = await client.get(
-                        f"https://api.clerk.com/v1/users/{clerk_id}",
-                        headers={"Authorization": f"Bearer {settings.clerk_secret_key}"}
+                user_data = await _fetch_clerk_user(clerk_id)
+                if user_data:
+                    email_addresses = user_data.get("email_addresses", [])
+                    primary_email_id = user_data.get("primary_email_address_id")
+                    primary_email = next(
+                        (e.get("email_address") for e in email_addresses if e.get("id") == primary_email_id),
+                        email_addresses[0].get("email_address") if email_addresses else None,
                     )
-                    if user_resp.status_code == 200:
-                        user_data = user_resp.json()
-                        email_addresses = user_data.get("email_addresses", [])
-                        primary_email_id = user_data.get("primary_email_address_id")
-                        primary_email = next(
-                            (e.get("email_address") for e in email_addresses if e.get("id") == primary_email_id),
-                            email_addresses[0].get("email_address") if email_addresses else None,
-                        )
-                        email = primary_email
+                    email = primary_email
 
             if not email:
                 raise HTTPException(
@@ -115,20 +144,23 @@ async def get_current_user(
                 )
             user = inserted.data[0]
 
-        # Auto-fetch GitHub token if missing
-        if user.get("github_username") and not user.get("github_access_token"):
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(
-                    f"https://api.clerk.com/v1/users/{clerk_id}/oauth_access_tokens/oauth_github",
-                    headers={"Authorization": f"Bearer {settings.clerk_secret_key}"}
-                )
-                if resp.status_code == 200:
-                    tokens = resp.json()
-                    if tokens and isinstance(tokens, list):
-                        token = tokens[0].get("token")
-                        if token:
-                            supabase.table("users").update({"github_access_token": token}).eq("id", user["id"]).execute()
-                            user["github_access_token"] = token
+        # Auto-fetch GitHub profile/token if missing. This keeps digest generation
+        # working even when the Clerk webhook did not populate the local user row.
+        github_updates = {}
+        if not user.get("github_username"):
+            clerk_user = await _fetch_clerk_user(clerk_id)
+            github_username = _github_username_from_clerk_user(clerk_user or {})
+            if github_username:
+                github_updates["github_username"] = github_username
+
+        if not user.get("github_access_token"):
+            github_token = await _fetch_clerk_github_token(clerk_id)
+            if github_token:
+                github_updates["github_access_token"] = github_token
+
+        if github_updates:
+            supabase.table("users").update(github_updates).eq("id", user["id"]).execute()
+            user.update(github_updates)
 
         return user
 

@@ -9,7 +9,7 @@ DevPulse is an AI-powered developer intelligence platform for GitHub workflows. 
 - Review history with shareable public review links
 - GitHub repository and activity views for authenticated users
 - Daily or weekly AI-generated developer digests
-- Email delivery for digests through Resend
+- Email delivery for digests through SMTP or Resend
 - Clerk authentication with GitHub OAuth
 - Supabase-backed persistence for users, reviews, and digest history
 
@@ -22,7 +22,7 @@ DevPulse is an AI-powered developer intelligence platform for GitHub workflows. 
 | Database | Supabase PostgreSQL |
 | Auth | Clerk with GitHub OAuth |
 | AI | Google Gemini 2.5 Flash |
-| Email | Resend |
+| Email | SMTP or Resend |
 | Scheduler | APScheduler |
 
 ## Project Structure
@@ -95,6 +95,15 @@ SUPABASE_SERVICE_KEY=
 CLERK_SECRET_KEY=
 CLERK_JWKS_URL=
 RESEND_API_KEY=
+EMAIL_PROVIDER=smtp
+EMAIL_FROM="DevPulse <your-email@example.com>"
+EMAIL_REPLY_TO=
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USERNAME=
+SMTP_PASSWORD=
+SMTP_USE_TLS=true
+SMTP_USE_SSL=false
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
 FRONTEND_URL=http://localhost:5173
@@ -177,7 +186,7 @@ For GitHub-powered features, enable GitHub OAuth in Clerk. The backend can retri
 
 ## Scheduled Digests
 
-The backend starts an APScheduler job on application startup. The job runs every day at `08:00 UTC`, finds users with digests enabled, generates a Gemini-powered activity summary, stores it in Supabase, and sends it through Resend.
+The backend starts an APScheduler job on application startup. The job runs every day at `08:00 UTC`, finds users with digests enabled, generates a Gemini-powered activity summary, stores it in Supabase, and sends it through the configured email provider.
 
 Users can choose:
 

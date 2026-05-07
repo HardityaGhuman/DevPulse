@@ -64,20 +64,28 @@ async def get_digest_history(user: dict = Depends(get_current_user)):
 @router.post("/preview")
 async def preview_digest(user: dict = Depends(get_current_user)):
     """Preview the next digest without sending it."""
-    payload = await build_digest_payload(user)
-    digest_result = await generate_digest(**payload)
-    return {
-        "digest": digest_result,
-        "period_start": payload["period_start"],
-        "period_end": payload["period_end"],
-    }
+    from google.api_core.exceptions import ResourceExhausted
+    try:
+        payload = await build_digest_payload(user)
+        digest_result = await generate_digest(**payload)
+        return {
+            "digest": digest_result,
+            "period_start": payload["period_start"],
+            "period_end": payload["period_end"],
+        }
+    except ResourceExhausted:
+        raise HTTPException(status_code=429, detail="Gemini API rate limit exceeded. Please wait a minute before trying again.")
 
 
 @router.post("/send-now")
 async def send_digest_now(user: dict = Depends(get_current_user)):
     """Trigger an immediate digest generation and email send."""
-    payload = await build_digest_payload(user)
-    digest_result = await generate_digest(**payload)
+    from google.api_core.exceptions import ResourceExhausted
+    try:
+        payload = await build_digest_payload(user)
+        digest_result = await generate_digest(**payload)
+    except ResourceExhausted:
+        raise HTTPException(status_code=429, detail="Gemini API rate limit exceeded. Please wait a minute before trying again.")
 
     supabase = get_supabase()
     supabase.table("digests").insert({

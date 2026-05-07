@@ -26,8 +26,17 @@ class Settings(BaseSettings):
     clerk_secret_key: str = ""
     clerk_jwks_url: str = ""
 
-    # Resend
+    # Email
+    email_provider: str = "resend"
+    email_from: str = "DevPulse <devpulse@localhost>"
+    email_reply_to: str = ""
     resend_api_key: str = ""
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_use_tls: bool = True
+    smtp_use_ssl: bool = False
 
     # GitHub OAuth
     github_client_id: str = ""

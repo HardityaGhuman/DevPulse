@@ -19,7 +19,7 @@ export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <nav className="sticky top-0 z-50 bg-background/60 backdrop-blur-xl border-b border-white/5">
+    <nav className="sticky top-0 z-50 bg-background/70 backdrop-blur-xl border-b border-border/50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-20">
           {/* Logo */}
@@ -32,7 +32,7 @@ export default function Navbar() {
 
           {/* Desktop Nav */}
           <SignedIn>
-            <div className="hidden md:flex items-center gap-2 px-2 py-1.5 bg-white/5 rounded-2xl border border-white/5">
+            <div className="hidden md:flex items-center gap-2 px-2 py-1.5 bg-primary/[0.03] rounded-2xl border border-border/50">
               {navLinks.map(({ to, label, icon: Icon }) => {
                 const isActive = location.pathname === to;
                 return (
@@ -41,8 +41,8 @@ export default function Navbar() {
                     to={to}
                     className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all no-underline ${
                       isActive
-                        ? "bg-white/10 text-primary shadow-sm"
-                        : "text-muted hover:text-primary hover:bg-white/5"
+                        ? "bg-accent/10 text-accent shadow-sm"
+                        : "text-muted hover:text-primary hover:bg-primary/[0.03]"
                     }`}
                   >
                     <Icon className="w-4 h-4" />
@@ -53,12 +53,12 @@ export default function Navbar() {
             </div>
             <div className="hidden md:flex items-center gap-6 ml-6">
               <ThemeToggle />
-              <div className="h-6 w-px bg-white/10" />
+              <div className="h-6 w-px bg-border/50" />
               <UserButton
                 afterSignOutUrl="/"
                 appearance={{
                   elements: { 
-                    avatarBox: "w-9 h-9 rounded-xl ring-2 ring-white/5 ring-offset-2 ring-offset-background",
+                    avatarBox: "w-9 h-9 rounded-xl ring-2 ring-border/50 ring-offset-2 ring-offset-background",
                     userButtonTrigger: "focus:shadow-none focus:ring-0"
                   },
                 }}
@@ -87,7 +87,7 @@ export default function Navbar() {
           {/* Mobile toggle */}
           <SignedIn>
             <button
-              className="md:hidden w-10 h-10 flex items-center justify-center rounded-xl bg-white/5 text-muted hover:text-primary transition-colors"
+              className="md:hidden w-10 h-10 flex items-center justify-center rounded-xl bg-primary/[0.03] border border-border/50 text-muted hover:text-primary transition-colors"
               onClick={() => setMobileOpen(!mobileOpen)}
             >
               {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -102,7 +102,7 @@ export default function Navbar() {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="md:hidden overflow-hidden border-t border-white/5 py-6 space-y-2"
+              className="md:hidden overflow-hidden border-t border-border/50 py-6 space-y-2"
             >
               {navLinks.map(({ to, label, icon: Icon }) => {
                 const isActive = location.pathname === to;
@@ -112,7 +112,7 @@ export default function Navbar() {
                     to={to}
                     onClick={() => setMobileOpen(false)}
                     className={`flex items-center gap-4 px-4 py-3 rounded-xl text-base font-bold no-underline transition-all ${
-                      isActive ? "bg-white/10 text-primary" : "text-muted hover:text-primary hover:bg-white/5"
+                      isActive ? "bg-accent/10 text-accent" : "text-muted hover:text-primary hover:bg-primary/[0.03]"
                     }`}
                   >
                     <Icon className="w-5 h-5" />
@@ -120,7 +120,7 @@ export default function Navbar() {
                   </Link>
                 );
               })}
-              <div className="pt-4 px-4 flex items-center justify-between border-t border-white/5 mt-4">
+              <div className="pt-4 px-4 flex items-center justify-between border-t border-border/50 mt-4">
                 <span className="text-sm font-bold text-muted uppercase tracking-widest flex items-center gap-2">
                   Appearance
                   <ThemeToggle />

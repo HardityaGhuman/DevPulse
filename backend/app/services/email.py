@@ -1,12 +1,12 @@
 """
 DevPulse — Email Service
-Sends digest emails using the Resend SDK with a dark-themed HTML template.
+Sends digest emails with a dark-themed HTML template.
 """
 
-import resend
-from app.config import settings
+import smtplib
+from email.message import EmailMessage
 
-resend.api_key = settings.resend_api_key
+from app.config import settings
 
 
 def _build_digest_html(digest: dict, period_start: str, period_end: str) -> str:
@@ -51,16 +51,54 @@ def _build_digest_html(digest: dict, period_start: str, period_end: str) -> str:
     """
 
 
+def _send_with_resend(to: str, subject: str, html: str) -> None:
+    import resend
+
+    resend.api_key = settings.resend_api_key
+    resend.Emails.send({
+        "from": settings.email_from,
+        "to": [to],
+        "subject": subject,
+        "html": html,
+        **({"reply_to": settings.email_reply_to} if settings.email_reply_to else {}),
+    })
+
+
+def _send_with_smtp(to: str, subject: str, html: str) -> None:
+    if not settings.smtp_host:
+        raise ValueError("SMTP_HOST is required when EMAIL_PROVIDER=smtp")
+
+    message = EmailMessage()
+    message["From"] = settings.email_from
+    message["To"] = to
+    message["Subject"] = subject
+    if settings.email_reply_to:
+        message["Reply-To"] = settings.email_reply_to
+    message.set_content("Your DevPulse digest is available in the HTML version of this email.")
+    message.add_alternative(html, subtype="html")
+
+    smtp_class = smtplib.SMTP_SSL if settings.smtp_use_ssl else smtplib.SMTP
+    with smtp_class(settings.smtp_host, settings.smtp_port, timeout=30) as smtp:
+        if settings.smtp_use_tls and not settings.smtp_use_ssl:
+            smtp.starttls()
+        if settings.smtp_username:
+            smtp.login(settings.smtp_username, settings.smtp_password)
+        smtp.send_message(message)
+
+
 async def send_digest_email(to: str, subject: str, digest: dict, period_start: str, period_end: str) -> bool:
-    """Send a digest email via Resend."""
+    """Send a digest email via the configured email provider."""
     try:
         html = _build_digest_html(digest, period_start, period_end)
-        resend.Emails.send({
-            "from": "DevPulse <digest@devpulse.dev>",
-            "to": [to],
-            "subject": subject,
-            "html": html,
-        })
+
+        provider = settings.email_provider.lower()
+        if provider == "smtp":
+            _send_with_smtp(to, subject, html)
+        elif provider == "resend":
+            _send_with_resend(to, subject, html)
+        else:
+            raise ValueError(f"Unsupported EMAIL_PROVIDER: {settings.email_provider}")
+
         return True
     except Exception as e:
         print(f"[Email] Failed to send digest to {to}: {e}")

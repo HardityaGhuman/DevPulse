@@ -86,7 +86,7 @@ export default function Dashboard() {
           >
             <div className={`absolute -right-4 -bottom-4 w-24 h-24 ${stat.bg} rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity`} />
             <div className="flex items-center justify-between mb-4">
-              <div className={`w-10 h-10 rounded-xl ${stat.bg} flex items-center justify-center border border-white/5`}>
+              <div className={`w-10 h-10 rounded-xl ${stat.bg} flex items-center justify-center border border-border/50`}>
                 <stat.icon className={`w-5 h-5 ${stat.color}`} />
               </div>
               <span className="text-sm font-bold text-muted tracking-wider uppercase">{stat.label}</span>
@@ -112,7 +112,7 @@ export default function Dashboard() {
                 Paste code and get instant AI-powered feedback
               </p>
             </div>
-            <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center group-hover:bg-accent transition-colors">
+            <div className="w-12 h-12 rounded-2xl bg-primary/[0.03] border border-border/50 flex items-center justify-center group-hover:bg-accent transition-colors">
               <ArrowRight className="w-6 h-6 text-primary group-hover:translate-x-1 transition-transform" />
             </div>
           </div>
@@ -132,7 +132,7 @@ export default function Dashboard() {
                 Analyze a GitHub pull request with AI
               </p>
             </div>
-            <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center group-hover:bg-success transition-colors">
+            <div className="w-12 h-12 rounded-2xl bg-primary/[0.03] border border-border/50 flex items-center justify-center group-hover:bg-success transition-colors">
               <ArrowRight className="w-6 h-6 text-primary group-hover:translate-x-1 transition-transform" />
             </div>
           </div>
@@ -161,7 +161,7 @@ export default function Dashboard() {
 
         {reviews.length === 0 ? (
           <div className="glass-card p-20 text-center rounded-[32px] border-dashed border-2">
-            <div className="w-20 h-20 bg-white/5 rounded-3xl flex items-center justify-center mx-auto mb-6">
+            <div className="w-20 h-20 bg-primary/[0.03] rounded-3xl flex items-center justify-center mx-auto mb-6">
               <Code2 className="w-10 h-10 text-muted" />
             </div>
             <p className="text-muted text-xl font-medium">No reviews yet. Start your first code review!</p>
@@ -180,7 +180,7 @@ export default function Dashboard() {
                   className="glass-card p-5 flex items-center justify-between group no-underline block rounded-2xl card-hover-effect"
                 >
                   <div className="flex items-center gap-5">
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center border border-white/5 ${
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center border border-border/50 ${
                       review.type === "code" ? "bg-accent/10" : "bg-success/10"
                     }`}>
                       {review.type === "code" ? (
@@ -200,14 +200,14 @@ export default function Dashboard() {
                   </div>
                   <div className="flex items-center gap-6">
                     {review.score && (
-                      <div className="text-right px-4 py-1.5 rounded-xl bg-white/5 border border-white/5">
+                      <div className="text-right px-4 py-1.5 rounded-xl bg-primary/[0.03] border border-border/50">
                         <span className={`text-lg font-black ${getScoreColor(review.score)}`}>
                           {review.score}
                         </span>
                         <span className="text-xs text-muted font-bold ml-1">/10</span>
                       </div>
                     )}
-                    <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center group-hover:bg-white/10 transition-colors">
+                    <div className="w-10 h-10 rounded-xl bg-primary/[0.03] border border-border/50 flex items-center justify-center group-hover:bg-primary/[0.08] transition-colors">
                       <ArrowRight className="w-5 h-5 text-muted group-hover:text-primary transition-all" />
                     </div>
                   </div>
