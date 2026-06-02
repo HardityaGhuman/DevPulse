@@ -44,15 +44,3 @@ services:
         sync: false
     rootDir: backend
 
-  # Frontend Dashboard
-  - type: web
-    name: devpulse-app
-    env: static
-    buildCommand: npm install && npm run build
-    publishPath: dist
-    envVars:
-      - key: VITE_API_BASE_URL
-        sync: false
-      - key: VITE_CLERK_PUBLISHABLE_KEY
-        sync: false
-    rootDir: frontend
