@@ -5,7 +5,7 @@ GET /api/github/activity
 """
 
 from fastapi import APIRouter, Depends, HTTPException
-from app.middleware.auth import get_current_user
+from app.dependencies import get_current_user
 from app.services.github import fetch_user_repos, fetch_recent_activity
 
 router = APIRouter(prefix="/api/github", tags=["github"])

@@ -5,7 +5,7 @@ GET  /api/users/me
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from app.middleware.auth import get_current_user
+from app.dependencies import get_current_user
 from app.database import get_supabase
 
 router = APIRouter(prefix="/api/users", tags=["users"])
