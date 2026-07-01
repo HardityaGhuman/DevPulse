@@ -4,39 +4,6 @@ DevPulse — Pydantic Request/Response Schemas
 
 from pydantic import BaseModel, Field
 from typing import Optional
-from datetime import datetime
-
-
-# ── Review Schemas ──────────────────────────────────────────────
-
-class CodeReviewRequest(BaseModel):
-    code: str = Field(..., min_length=1, description="Source code to review")
-    language: str = Field(..., min_length=1, description="Programming language")
-
-
-class PRReviewRequest(BaseModel):
-    pr_url: str = Field(..., description="GitHub PR URL (e.g. https://github.com/owner/repo/pull/123)")
-
-
-class ReviewResponse(BaseModel):
-    id: str
-    type: str
-    review_result: dict
-    share_token: Optional[str] = None
-    language: Optional[str] = None
-    pr_url: Optional[str] = None
-    repo_name: Optional[str] = None
-    created_at: str
-
-
-class ReviewHistoryItem(BaseModel):
-    id: str
-    type: str
-    language: Optional[str] = None
-    pr_url: Optional[str] = None
-    repo_name: Optional[str] = None
-    score: Optional[int] = None
-    created_at: str
 
 
 # ── Digest Schemas ──────────────────────────────────────────────
