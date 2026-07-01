@@ -15,8 +15,9 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Gemini
+    # LLM — LiteLLM reads these provider keys from the environment directly.
     gemini_api_key: str = ""
+    groq_api_key: str = ""
 
     # Supabase
     supabase_url: str = ""
@@ -25,22 +26,16 @@ class Settings(BaseSettings):
     # Clerk
     clerk_secret_key: str = ""
     clerk_jwks_url: str = ""
+    clerk_issuer: str = ""            # e.g. https://your-app.clerk.accounts.dev
+    clerk_webhook_secret: str = ""    # Svix signing secret (whsec_...)
 
-    # Email
-    email_provider: str = "resend"
+    # Cron (Cloud Scheduler shared secret)
+    internal_cron_secret: str = ""
+
+    # Email (Resend only)
+    resend_api_key: str = ""
     email_from: str = "DevPulse <devpulse@localhost>"
     email_reply_to: str = ""
-    resend_api_key: str = ""
-    smtp_host: str = ""
-    smtp_port: int = 587
-    smtp_username: str = ""
-    smtp_password: str = ""
-    smtp_use_tls: bool = True
-    smtp_use_ssl: bool = False
-
-    # GitHub OAuth
-    github_client_id: str = ""
-    github_client_secret: str = ""
 
     # Frontend
     frontend_url: str = "http://localhost:5173"
