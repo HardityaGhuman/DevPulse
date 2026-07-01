@@ -10,7 +10,7 @@ POST /api/digest/send-now
 import json
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
-from app.middleware.auth import get_current_user
+from app.dependencies import get_current_user
 from app.database import get_supabase
 from app.schemas import DigestSettingsRequest
 from app.services.digest import build_digest_payload
