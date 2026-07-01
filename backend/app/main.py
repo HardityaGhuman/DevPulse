@@ -7,8 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.routers import github, digest, users
-# from app.routers import internal  # enabled in Task 8
+from app.routers import github, digest, users, internal
 from app.scheduler import start_scheduler, stop_scheduler
 
 logging.basicConfig(level=logging.INFO)
@@ -52,7 +51,7 @@ app.add_middleware(
 app.include_router(github.router)
 app.include_router(digest.router)
 app.include_router(users.router)
-# app.include_router(internal.router)  # enabled in Task 8
+app.include_router(internal.router)
 
 
 @app.get("/health")
