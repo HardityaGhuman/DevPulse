@@ -74,7 +74,8 @@ async def generate_and_deliver(user: dict, days_back: int = 7) -> dict:
     }, on_conflict="user_id,period_end").execute()
 
     n_waiting = len(context.waiting_prs)
-    subject = (f"DevPulse · {n_waiting} PRs need you · {context.period_end}"
+    noun = "PR needs" if n_waiting == 1 else "PRs need"
+    subject = (f"DevPulse · {n_waiting} {noun} you · {context.period_end}"
                if n_waiting else f"DevPulse · Daily summary · {context.period_end}")
     sent = await send_digest_email(
         to=user["email"], subject=subject, digest=digest, context=context,
