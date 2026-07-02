@@ -14,6 +14,12 @@ class WaitingPR(BaseModel):
     title: str
     url: str
     age_days: int
+    additions: int = 0
+    deletions: int = 0
+    changed_files: int = 0
+    is_draft: bool = False
+    mergeable: str = "UNKNOWN"        # GraphQL enum: MERGEABLE | CONFLICTING | UNKNOWN
+    reason: str = "yours"             # "review_requested" | "yours"
 
 
 class DigestContext(BaseModel):
@@ -35,10 +41,6 @@ class DigestContext(BaseModel):
 class DigestResult(BaseModel):
     """The validated LLM output. Any provider must produce exactly this shape."""
     headline: str
-    highlights: list[str]
-    streak_comment: str
-    top_repo: Optional[str] = None
-    coaching_tip: str
     momentum: Literal["rising", "steady", "declining"]
 
 

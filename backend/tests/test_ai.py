@@ -6,9 +6,7 @@ CTX = DigestContext(github_username="me", period_start="2026-06-24", period_end=
                     commits=10, prs_opened=2, prs_merged=1, issues_opened=0, reviews=3,
                     repos_active=["me/app"], streak_days=5)
 
-VALID_JSON = ('{"headline":"Strong week","highlights":["a","b"],'
-              '"streak_comment":"5 days","top_repo":"me/app",'
-              '"coaching_tip":"write tests","momentum":"rising"}')
+VALID_JSON = '{"headline":"Steady day — 2 commits on aria.","momentum":"rising"}'
 
 
 @pytest.mark.asyncio
@@ -35,7 +33,7 @@ async def test_invalid_primary_output_triggers_fallback(monkeypatch):
 
     monkeypatch.setattr(ai, "_complete", fake_complete)
     result = await ai.generate_digest(CTX)
-    assert result.headline == "Strong week"
+    assert result.headline.startswith("Steady day")
 
 
 @pytest.mark.asyncio
