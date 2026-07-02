@@ -72,7 +72,7 @@ export default function DigestSample() {
           <span className="block w-3 h-3 rounded-full" style={{ background: "#e5e2e1" }} />
         </div>
         <span className="mono" style={{ color: "var(--color-muted)", fontSize: 11 }}>
-          digest_render.tsx
+          Inbox · 8:00 AM
         </span>
       </div>
 

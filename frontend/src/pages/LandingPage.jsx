@@ -4,7 +4,7 @@
   All feature copy is grounded in what the backend actually produces.
 */
 
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth, SignInButton } from "@clerk/clerk-react";
 import { motion } from "framer-motion";
 import DigestSample from "@/components/DigestSample";
@@ -98,7 +98,7 @@ export default function LandingPage() {
       {/* masthead */}
       <div className="glass-nav sticky top-0 z-50">
         <div className={`${PAGE} py-4 flex justify-between items-center`}>
-          <a href="/" className="serif" style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em" }}>DEVPULSE</a>
+          <Link to="/" className="serif" style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em" }}>DEVPULSE</Link>
           <SignInPill />
         </div>
       </div>
@@ -245,8 +245,7 @@ export default function LandingPage() {
         <div className="rule pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="serif" style={{ fontSize: 24, fontWeight: 700 }}>DEVPULSE</div>
           <div className="flex gap-6">
-            <a className="mono" href="https://github.com/HardityaGhuman/DevPulse">GitHub</a>
-            <a className="mono" href="#">Privacy</a>
+            <a className="mono" href="https://github.com/HardityaGhuman/DevPulse" target="_blank" rel="noreferrer">GitHub</a>
           </div>
           <div className="mono" style={{ color: "var(--color-muted)" }}>© 2026 · built for developers</div>
         </div>
