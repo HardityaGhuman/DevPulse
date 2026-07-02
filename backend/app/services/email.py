@@ -9,12 +9,24 @@ locks to light via `color-scheme` meta + explicit bg/text on every element, so d
 clients cannot auto-invert it into an unreadable mess.
 """
 
+import html
 import logging
 import resend
 from app.config import settings
 from app.schemas import DigestResult, DigestContext
 
 logger = logging.getLogger("devpulse.email")
+
+
+def _esc(text: str) -> str:
+    """HTML-escape any dynamic text (PR titles, repo names, LLM headline)."""
+    return html.escape(str(text), quote=True)
+
+
+def _safe_url(url: str) -> str:
+    """Only allow http(s) links in hrefs; escape for attribute context."""
+    u = str(url)
+    return html.escape(u, quote=True) if u.startswith(("http://", "https://")) else "#"
 
 _FONT = "'Inter', -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif"
 _MOMENTUM = {
@@ -63,8 +75,8 @@ def _waiting_rows(context: DigestContext) -> str:
           <table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr>
             <td valign="top" style="padding-right:12px;">
               <div style="font-size:14px;line-height:20px;margin:0 0 5px;">
-                <span style="color:#777585;font-size:12px;">{pr.repo}</span>
-                &nbsp;<a href="{pr.url}" style="color:#1C1B1B;font-weight:500;text-decoration:none;">{pr.title}</a>
+                <span style="color:#777585;font-size:12px;">{_esc(pr.repo)}</span>
+                &nbsp;<a href="{_safe_url(pr.url)}" style="color:#1C1B1B;font-weight:500;text-decoration:none;">{_esc(pr.title)}</a>
               </div>
               <div style="font-size:12px;line-height:16px;color:#777585;">
                 {pr.age_days}d ago &nbsp;&nbsp; <span style="color:#059669;">+{pr.additions}</span>
@@ -90,7 +102,7 @@ def _repo_chips(context: DigestContext) -> str:
     chips = "".join(
         f'<span style="display:inline-block;margin:0 6px 6px 0;padding:5px 12px;'
         f'border:1px solid #EAEAEA;border-radius:6px;background:#FCF9F8;font-size:13px;'
-        f'color:#1C1B1B;">{r}</span>' for r in context.repos_active)
+        f'color:#1C1B1B;">{_esc(r)}</span>' for r in context.repos_active)
     return chips or '<span style="font-size:13px;color:#585F6C;">No repositories touched.</span>'
 
 
@@ -120,7 +132,7 @@ def _build_digest_html(digest: DigestResult, context: DigestContext,
       </tr></table>
     </td></tr>
     <tr><td style="background:#FFFFFF;border:1px solid #EAEAEA;border-radius:12px;padding:40px;box-shadow:0 4px 12px rgba(0,0,0,0.03);">
-      <p style="font-size:15px;line-height:24px;color:#1C1B1B;margin:0 0 40px;">{digest.headline}</p>
+      <p style="font-size:15px;line-height:24px;color:#1C1B1B;margin:0 0 40px;">{_esc(digest.headline)}</p>
 
       <div style="margin-bottom:40px;">
         {_section_header("&#9889; Waiting on you")}

@@ -32,3 +32,14 @@ def test_html_empty_waiting_state():
     ctx = CTX.model_copy(update={"waiting_prs": []})
     html = _build_digest_html(RES, ctx, "2026-07-01", "2026-07-02")
     assert "Nothing needs your review" in html
+
+
+def test_html_escapes_malicious_pr_title():
+    ctx = CTX.model_copy(update={"waiting_prs": [WaitingPR(
+        repo="me/x", number=1, title='<script>alert(1)</script>"onmouseover',
+        url="javascript:alert(1)", age_days=1, reason="yours")]})
+    html = _build_digest_html(RES, ctx, "2026-07-01", "2026-07-02")
+    assert "<script>alert(1)</script>" not in html      # escaped
+    assert "&lt;script&gt;" in html
+    assert 'href="javascript:alert(1)"' not in html      # unsafe scheme dropped
+    assert 'href="#"' in html
