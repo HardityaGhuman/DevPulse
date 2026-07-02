@@ -63,18 +63,22 @@ async def generate_and_deliver(user: dict, days_back: int = 7) -> dict:
     digest = await generate_digest(context)
 
     supabase = get_supabase()
+    summary_blob = {"headline": digest.headline, "momentum": digest.momentum,
+                    "context": context.model_dump()}
     supabase.table("digests").upsert({
         "user_id": user["id"],
         "period_start": context.period_start,
         "period_end": context.period_end,
         "activity_data": context.model_dump(),
-        "ai_summary": json.dumps(digest.model_dump()),
+        "ai_summary": json.dumps(summary_blob),
     }, on_conflict="user_id,period_end").execute()
 
+    n_waiting = len(context.waiting_prs)
+    subject = (f"DevPulse · {n_waiting} PRs need you · {context.period_end}"
+               if n_waiting else f"DevPulse · Daily summary · {context.period_end}")
     sent = await send_digest_email(
-        to=user["email"],
-        subject=f"DevPulse Digest — {digest.headline}",
-        digest=digest, period_start=context.period_start, period_end=context.period_end,
+        to=user["email"], subject=subject, digest=digest, context=context,
+        period_start=context.period_start, period_end=context.period_end,
     )
     if sent:
         supabase.table("digests").update(
