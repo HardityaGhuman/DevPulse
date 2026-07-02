@@ -50,3 +50,26 @@ async def test_streak_stops_at_first_zero_day():
                                            "2026-07-01T00:00:00+00:00")
     # Most recent day (06-30) has activity, day before (06-29) is zero -> streak = 1
     assert out["streak_days"] == 1
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_waiting_prs_enriched():
+    def node(num, repo):
+        return {"number": num, "title": f"PR {num}", "url": f"https://x/{num}",
+                "createdAt": "2026-06-20T00:00:00Z", "isDraft": False,
+                "mergeable": "CONFLICTING", "additions": 10, "deletions": 2,
+                "changedFiles": 3, "repository": {"nameWithOwner": repo}}
+    payloads = [
+        {"data": {"search": {"nodes": [node(1, "me/app")]}}},   # review-requested
+        {"data": {"search": {"nodes": [node(2, "me/lib")]}}},   # authored
+    ]
+    route = respx.post(GQL)
+    route.side_effect = [httpx.Response(200, json=payloads[0]),
+                         httpx.Response(200, json=payloads[1])]
+    out = await github.fetch_waiting_prs("me", "tok")
+    by_num = {p["number"]: p for p in out}
+    assert by_num[1]["reason"] == "review_requested"
+    assert by_num[1]["mergeable"] == "CONFLICTING"
+    assert by_num[1]["changed_files"] == 3
+    assert by_num[2]["reason"] == "yours"
