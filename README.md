@@ -10,11 +10,12 @@
 
 ## The Problem It Solves
 
-Keeping track of your own development progress is tedious, and GitHub's notifications are noisy. DevPulse aggregates your real GitHub activity for the period, has an LLM turn it into a punchy summary — headline, highlights, streak, momentum, and one actionable tip — and emails it to you on the schedule you choose.
+Keeping track of your own development progress is tedious, and GitHub's notifications are noisy. DevPulse aggregates your real GitHub activity for the period and emails you a clean, fact-driven digest: a one-line AI summary and momentum read, your activity stats with week-over-week deltas, your streak, the repos you touched, and — most usefully — the pull requests waiting on you.
 
 ## Key Features
 
-- **Automated Developer Digests** — Opt into daily or weekly email summaries. An AI coach turns raw activity into a headline, highlights, a momentum read, and an actionable tip.
+- **Automated Developer Digests** — Opt into daily or weekly email summaries. Facts are rendered directly (counts, deltas, streak, waiting PRs); the LLM adds only a one-line headline and a momentum read — no filler.
+- **Clean, fixed-light email** — a professional, email-safe template (locked to light so dark-mode clients can't invert it into a mess).
 - **Accurate GitHub Activity** — Uses GitHub's GraphQL `contributionsCollection` API: commits, PRs, issues, reviews, active repos, and current streak — including private repositories.
 - **PRs Waiting On You** — Surfaces open PRs you authored or that request your review, so nothing stalls.
 - **Week-over-Week Momentum** — Compares against your previous digest for real deltas, not guesses.
@@ -30,7 +31,7 @@ A React single-page app talks to a stateless FastAPI service over a JSON API.
 2. **GitHub access** — The backend fetches the user's GitHub OAuth token **live from Clerk** for each request and holds it in memory only — it is never persisted.
 3. **Digest generation** — Activity is assembled into a typed context and passed to the LLM layer via **LiteLLM** (model-agnostic). The prompt follows the PTCF framework; output is validated against a strict schema.
 4. **Persistence** — Digests are stored in PostgreSQL (Supabase), one row per period.
-5. **Scheduled delivery** — Google Cloud Scheduler calls a shared-secret-protected internal endpoint on a cron. The backend selects due users (daily every day, weekly on their chosen day), generates each digest, and emails it via Resend.
+5. **Scheduled delivery** — an external cron (cron-job.org) calls a shared-secret-protected internal endpoint daily. The backend selects due users (daily every day, weekly on their chosen day), generates each digest, and emails it via Resend.
 
 ### Tech stack
 
@@ -58,22 +59,24 @@ The backend is a stateless container; scheduling lives outside the app.
 
 ```bash
 cd backend
-gcloud run deploy devpulse-api \
-  --source . \
-  --region <region> \
-  --allow-unauthenticated \
-  --set-env-vars "GEMINI_API_KEY=...,GROQ_API_KEY=...,SUPABASE_URL=...,SUPABASE_SERVICE_KEY=...,CLERK_SECRET_KEY=...,CLERK_JWKS_URL=...,CLERK_ISSUER=...,CLERK_WEBHOOK_SECRET=...,INTERNAL_CRON_SECRET=...,RESEND_API_KEY=...,EMAIL_FROM=...,FRONTEND_URL=..."
+gcloud run deploy devpulse-api --source . --region <region> \
+  --allow-unauthenticated --max-instances=2
 ```
 
-**3. Schedule the digest cron:**
+Then set the environment variables (all keys from `.env.example`) in the Cloud Run Console
+→ *Edit & deploy new revision → Variables & Secrets*. Doing it in the Console avoids shell
+quoting issues with values that contain spaces (e.g. `EMAIL_FROM`). Env vars persist across
+future `gcloud run deploy` runs.
 
-```bash
-gcloud scheduler jobs create http devpulse-digest \
-  --schedule "0 8 * * *" \
-  --uri "<service-url>/internal/run-digests" \
-  --http-method POST \
-  --headers "X-Internal-Secret=<INTERNAL_CRON_SECRET>"
-```
+**3. Schedule the digest cron** — create a job on [cron-job.org](https://cron-job.org) (or any
+scheduler):
+- URL: `<service-url>/internal/run-digests`
+- Method: `POST`
+- Header: `X-Internal-Secret: <INTERNAL_CRON_SECRET>`
+- Schedule: daily, e.g. 08:00
+
+Any HTTP scheduler works — the endpoint just needs the secret header. (Google Cloud Scheduler
+is a fine alternative if you prefer staying inside GCP.)
 
 **4. Database** — run `database/schema.sql` on a fresh Supabase project, or `database/migration.sql` to upgrade an existing one.
 
