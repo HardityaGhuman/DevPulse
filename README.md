@@ -78,3 +78,51 @@ gcloud scheduler jobs create http devpulse-digest \
 **4. Database** — run `database/schema.sql` on a fresh Supabase project, or `database/migration.sql` to upgrade an existing one.
 
 The frontend deploys separately (e.g. Vercel) and points at the Cloud Run URL.
+
+---
+
+## Local Development
+
+**Backend:**
+```bash
+cd backend
+python -m venv venv && source venv/bin/activate
+pip install -r requirements-dev.txt
+cp .env.example .env    # fill in values
+uvicorn app.main:app --reload   # http://localhost:8000
+pytest                          # run the test suite
+```
+
+**Frontend:**
+```bash
+cd frontend
+npm install
+npm run dev                     # http://localhost:5173
+```
+
+The frontend reads the API base from `VITE_API_BASE_URL` (defaults to
+`http://localhost:8000`). To point it at the deployed backend, set in `frontend/.env`:
+```
+VITE_API_BASE_URL=https://devpulse-api-813251153590.asia-south1.run.app
+```
+Auth tokens are Clerk session JWTs, attached automatically by `src/lib/api.js`.
+
+## Project Layout
+
+```
+backend/          FastAPI service (see app/ structure below)
+  app/security/   Clerk JWT, Svix webhook, cron-secret guards
+  app/clients/    external APIs — Clerk, GitHub GraphQL
+  app/services/   ai (LiteLLM), digest orchestration, Resend email
+  app/routers/    users, digest, github, internal (cron)
+database/         schema.sql (fresh) + migration.sql (upgrade)
+frontend/         React + Vite SPA (next up for a UI pass)
+```
+
+## Status & Next Steps
+
+Backend + auth are refactored, secured, and deployed on Cloud Run with a daily
+cron. **Next phase: the frontend** — a proper UI focused on the digest experience
+(history, settings, on-demand preview). The current frontend is a basic scaffold;
+it works against the API but is due for a redesign.
+
