@@ -29,3 +29,6 @@ docs/superpowers/
 
 # Scratch
 scratch/
+
+# Playwright MCP artifacts
+.playwright-mcp/
