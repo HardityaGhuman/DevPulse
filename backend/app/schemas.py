@@ -47,17 +47,12 @@ class DigestResult(BaseModel):
 # ── Digest Schemas ──────────────────────────────────────────────
 
 class DigestSettingsRequest(BaseModel):
-    digest_frequency: str = Field(..., pattern="^(off|daily|weekly)$")
-    digest_day: Optional[str] = Field(
-        "monday",
-        pattern="^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$",
-    )
+    digest_frequency: str = Field(..., pattern="^(off|6h|12h|daily|weekly)$")
     tracked_repos: Optional[list[str]] = None
 
 
 class DigestSettingsResponse(BaseModel):
     digest_frequency: str
-    digest_day: str
     tracked_repos: Optional[list[str]] = None
 
 
@@ -84,6 +79,5 @@ class UserProfile(BaseModel):
     email: str
     github_username: Optional[str] = None
     digest_frequency: str
-    digest_day: str
     tracked_repos: Optional[list[str]] = None
     created_at: str

@@ -7,13 +7,11 @@ POST /api/digest/preview     (rate limited)
 POST /api/digest/send-now    (rate limited)
 """
 
-from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, Request
 from app.dependencies import get_current_user
 from app.database import get_supabase
 from app.schemas import DigestSettingsRequest
-from app.services.digest import build_context, generate_and_deliver
-from app.services.ai import generate_digest
+from app.services.digest import get_or_build_digest, generate_and_deliver
 from app.rate_limit import limiter
 
 router = APIRouter(prefix="/api/digest", tags=["digest"])
@@ -23,8 +21,7 @@ router = APIRouter(prefix="/api/digest", tags=["digest"])
 async def get_digest_settings(user: dict = Depends(get_current_user)):
     """Get the user's digest preferences."""
     return {
-        "digest_frequency": user.get("digest_frequency", "daily"),
-        "digest_day": user.get("digest_day", "monday"),
+        "digest_frequency": user.get("digest_frequency", "off"),
         "tracked_repos": user.get("tracked_repos"),
     }
 
@@ -33,10 +30,7 @@ async def get_digest_settings(user: dict = Depends(get_current_user)):
 async def update_digest_settings(body: DigestSettingsRequest, user: dict = Depends(get_current_user)):
     """Update the user's digest preferences."""
     supabase = get_supabase()
-    update_data = {
-        "digest_frequency": body.digest_frequency,
-        "digest_day": body.digest_day or "monday",
-    }
+    update_data = {"digest_frequency": body.digest_frequency}
     if body.tracked_repos is not None:
         update_data["tracked_repos"] = body.tracked_repos
 
@@ -62,12 +56,9 @@ async def get_digest_history(user: dict = Depends(get_current_user)):
 @router.post("/preview")
 @limiter.limit("10/minute")
 async def preview_digest(request: Request, user: dict = Depends(get_current_user)):
-    """Preview the next digest without sending it."""
-    now = datetime.now(timezone.utc)
-    start = (now - timedelta(days=7)).isoformat()
-    ctx = await build_context(user, start, now.isoformat())
-    digest = await generate_digest(ctx)
-    return {"digest": digest.model_dump(),
+    """Preview the digest without sending it (uses the short-TTL cache)."""
+    result, ctx = await get_or_build_digest(user, force=False)
+    return {"digest": result.model_dump(),
             "period_start": ctx.period_start, "period_end": ctx.period_end}
 
 
@@ -75,4 +66,4 @@ async def preview_digest(request: Request, user: dict = Depends(get_current_user
 @limiter.limit("5/minute")
 async def send_digest_now(request: Request, user: dict = Depends(get_current_user)):
     """Generate a digest immediately, persist it, and email it to the user."""
-    return await generate_and_deliver(user, days_back=7)
+    return await generate_and_deliver(user)
