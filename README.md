@@ -124,8 +124,10 @@ frontend/         React + Vite SPA (next up for a UI pass)
 
 ## Status & Next Steps
 
-Backend + auth are refactored, secured, and deployed on Cloud Run with a daily
-cron. **Next phase: the frontend** — a proper UI focused on the digest experience
-(history, settings, on-demand preview). The current frontend is a basic scaffold;
-it works against the API but is due for a redesign.
+Backend + auth are refactored, secured, and deployed on Cloud Run. Digest frequency
+is interval-based (`off / 6h / 12h / daily / weekly`); a single cron fans out to
+whoever's due. **Next phase: the frontend** — a public demo: a landing page + a
+signed-in dashboard for frequency preferences, both showcasing a **static sample
+digest** (the real digest only arrives by email — no live in-app preview). The current
+frontend is a basic scaffold, due for a redesign.
 
