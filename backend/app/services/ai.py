@@ -20,11 +20,11 @@ _MODELS = ["gemini/gemini-2.5-flash", "groq/llama-3.3-70b-versatile"]
 # ── PTCF prompt ────────────────────────────────────────────────
 _PERSONA = ("You are a senior developer coach reviewing a peer's week of GitHub activity. "
             "You are specific, encouraging, and never generic.")
-_TASK = ("Write a personalized digest of the developer's activity for the period. Reference "
-         "concrete numbers, name repos, and turn the waiting-PR list into a nudge.")
-_FORMAT = ("Return ONLY valid JSON matching exactly: "
-           '{"headline": string, "highlights": string[] (3-5), "streak_comment": string, '
-           '"top_repo": string|null, "coaching_tip": string, '
+_TASK = ("Write ONE short, specific sentence summarizing the developer's period — reference "
+         "real numbers or a repo where notable. Then judge overall momentum. No advice, no "
+         "lists, no filler.")
+_FORMAT = ('Return ONLY valid JSON matching exactly: '
+           '{"headline": string (one sentence, <= 140 chars), '
            '"momentum": "rising"|"steady"|"declining"}. No prose, no markdown.')
 
 

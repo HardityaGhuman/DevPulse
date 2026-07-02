@@ -6,7 +6,6 @@ Uses the GraphQL `contributionsCollection` API for accurate activity counts and 
 and a slim repo list for the frontend.
 """
 
-import re
 import httpx
 from datetime import datetime, timezone
 
@@ -85,30 +84,61 @@ async def fetch_contributions(username: str, token: str, since: str, until: str)
     }
 
 
-async def fetch_waiting_prs(username: str, token: str) -> list[dict]:
-    """Open PRs authored by the user OR requesting their review — the 'waiting on you' list."""
-    authored = f"is:open is:pr author:{username} archived:false"
-    review_req = f"is:open is:pr review-requested:{username} archived:false"
-    out: list[dict] = []
-    async with httpx.AsyncClient(timeout=20) as client:
-        for query in (authored, review_req):
-            r = await client.get(f"{REST}/search/issues",
-                                 headers=_headers(token),
-                                 params={"q": query, "per_page": 20})
-            if r.status_code != 200:
-                continue
-            for item in r.json().get("items", []):
-                created = parse_iso(item["created_at"])
-                age = (datetime.now(timezone.utc) - created).days
-                out.append({
-                    "repo": re.sub(r"^https://api.github.com/repos/", "",
-                                   item.get("repository_url", "")),
-                    "number": item.get("number"),
-                    "title": item.get("title"),
-                    "url": item.get("html_url"),
-                    "age_days": age,
-                })
+_WAITING_QUERY = """
+query($q:String!) {
+  search(query:$q, type:ISSUE, first:20) {
+    nodes {
+      ... on PullRequest {
+        number title url createdAt isDraft mergeable
+        additions deletions changedFiles
+        repository { nameWithOwner }
+      }
+    }
+  }
+}
+"""
+
+
+async def _search_prs(client: httpx.AsyncClient, token: str, q: str, reason: str) -> list[dict]:
+    r = await client.post(GRAPHQL, headers=_headers(token),
+                          json={"query": _WAITING_QUERY, "variables": {"q": q}})
+    if r.status_code != 200:
+        return []
+    nodes = (r.json().get("data", {}).get("search", {}) or {}).get("nodes", []) or []
+    out = []
+    for n in nodes:
+        if not n:                      # non-PR nodes come back as {}
+            continue
+        created = parse_iso(n["createdAt"])
+        out.append({
+            "repo": n["repository"]["nameWithOwner"],
+            "number": n["number"], "title": n["title"], "url": n["url"],
+            "age_days": (datetime.now(timezone.utc) - created).days,
+            "additions": n.get("additions", 0), "deletions": n.get("deletions", 0),
+            "changed_files": n.get("changedFiles", 0),
+            "is_draft": n.get("isDraft", False),
+            "mergeable": n.get("mergeable", "UNKNOWN"),
+            "reason": reason,
+        })
     return out
+
+
+async def fetch_waiting_prs(username: str, token: str) -> list[dict]:
+    """Open PRs requesting the user's review OR authored by them. Review-requested first."""
+    async with httpx.AsyncClient(timeout=20) as client:
+        review = await _search_prs(
+            client, token, f"is:open is:pr review-requested:{username} archived:false",
+            "review_requested")
+        authored = await _search_prs(
+            client, token, f"is:open is:pr author:{username} archived:false", "yours")
+    seen, merged = set(), []
+    for pr in review + authored:       # review-requested takes priority on dupes
+        if pr["url"] in seen:
+            continue
+        seen.add(pr["url"])
+        merged.append(pr)
+    merged.sort(key=lambda p: p["age_days"], reverse=True)
+    return merged
 
 
 async def fetch_user_repos(token: str) -> list[dict]:
