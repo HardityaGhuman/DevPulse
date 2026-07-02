@@ -3,19 +3,18 @@ DevPulse — Digest Router
 GET  /api/digest/settings
 POST /api/digest/settings
 GET  /api/digest/history
-POST /api/digest/preview
-POST /api/digest/send-now
+POST /api/digest/preview     (rate limited)
+POST /api/digest/send-now    (rate limited)
 """
 
-import json
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException
-from app.middleware.auth import get_current_user
+from fastapi import APIRouter, Depends, Request
+from app.dependencies import get_current_user
 from app.database import get_supabase
 from app.schemas import DigestSettingsRequest
-from app.services.digest import build_digest_payload
-from app.services.gemini import generate_digest
-from app.services.email import send_digest_email
+from app.services.digest import build_context, generate_and_deliver
+from app.services.ai import generate_digest
+from app.rate_limit import limiter
 
 router = APIRouter(prefix="/api/digest", tags=["digest"])
 
@@ -42,7 +41,6 @@ async def update_digest_settings(body: DigestSettingsRequest, user: dict = Depen
         update_data["tracked_repos"] = body.tracked_repos
 
     supabase.table("users").update(update_data).eq("id", user["id"]).execute()
-
     return {"message": "Settings updated", **update_data}
 
 
@@ -62,51 +60,19 @@ async def get_digest_history(user: dict = Depends(get_current_user)):
 
 
 @router.post("/preview")
-async def preview_digest(user: dict = Depends(get_current_user)):
+@limiter.limit("10/minute")
+async def preview_digest(request: Request, user: dict = Depends(get_current_user)):
     """Preview the next digest without sending it."""
-    from google.api_core.exceptions import ResourceExhausted
-    try:
-        payload = await build_digest_payload(user)
-        digest_result = await generate_digest(**payload)
-        return {
-            "digest": digest_result,
-            "period_start": payload["period_start"],
-            "period_end": payload["period_end"],
-        }
-    except ResourceExhausted:
-        raise HTTPException(status_code=429, detail="Gemini API rate limit exceeded. Please wait a minute before trying again.")
+    now = datetime.now(timezone.utc)
+    start = (now - timedelta(days=7)).isoformat()
+    ctx = await build_context(user, start, now.isoformat())
+    digest = await generate_digest(ctx)
+    return {"digest": digest.model_dump(),
+            "period_start": ctx.period_start, "period_end": ctx.period_end}
 
 
 @router.post("/send-now")
-async def send_digest_now(user: dict = Depends(get_current_user)):
-    """Trigger an immediate digest generation and email send."""
-    from google.api_core.exceptions import ResourceExhausted
-    try:
-        payload = await build_digest_payload(user)
-        digest_result = await generate_digest(**payload)
-    except ResourceExhausted:
-        raise HTTPException(status_code=429, detail="Gemini API rate limit exceeded. Please wait a minute before trying again.")
-
-    supabase = get_supabase()
-    supabase.table("digests").insert({
-        "user_id": user["id"],
-        "period_start": payload["period_start"][:10],
-        "period_end": payload["period_end"][:10],
-        "activity_data": payload,
-        "ai_summary": json.dumps(digest_result),
-    }).execute()
-
-    email_sent = await send_digest_email(
-        to=user["email"],
-        subject=f"DevPulse Digest — {digest_result.get('headline', 'Your Activity Summary')}",
-        digest=digest_result,
-        period_start=payload["period_start"][:10],
-        period_end=payload["period_end"][:10],
-    )
-
-    if email_sent:
-        supabase.table("digests").update(
-            {"email_sent_at": datetime.now(timezone.utc).isoformat()}
-        ).eq("user_id", user["id"]).eq("period_end", payload["period_end"][:10]).execute()
-
-    return {"message": "Digest sent" if email_sent else "Digest saved but email failed", "digest": digest_result}
+@limiter.limit("5/minute")
+async def send_digest_now(request: Request, user: dict = Depends(get_current_user)):
+    """Generate a digest immediately, persist it, and email it to the user."""
+    return await generate_and_deliver(user, days_back=7)

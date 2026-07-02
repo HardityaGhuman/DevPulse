@@ -3,40 +3,43 @@ DevPulse — Pydantic Request/Response Schemas
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional
-from datetime import datetime
+from typing import Optional, Literal
 
 
-# ── Review Schemas ──────────────────────────────────────────────
+# ── LLM Digest I/O (typed, provider-agnostic) ───────────────────
 
-class CodeReviewRequest(BaseModel):
-    code: str = Field(..., min_length=1, description="Source code to review")
-    language: str = Field(..., min_length=1, description="Programming language")
-
-
-class PRReviewRequest(BaseModel):
-    pr_url: str = Field(..., description="GitHub PR URL (e.g. https://github.com/owner/repo/pull/123)")
-
-
-class ReviewResponse(BaseModel):
-    id: str
-    type: str
-    review_result: dict
-    share_token: Optional[str] = None
-    language: Optional[str] = None
-    pr_url: Optional[str] = None
-    repo_name: Optional[str] = None
-    created_at: str
+class WaitingPR(BaseModel):
+    repo: str
+    number: int
+    title: str
+    url: str
+    age_days: int
 
 
-class ReviewHistoryItem(BaseModel):
-    id: str
-    type: str
-    language: Optional[str] = None
-    pr_url: Optional[str] = None
-    repo_name: Optional[str] = None
-    score: Optional[int] = None
-    created_at: str
+class DigestContext(BaseModel):
+    """The full, deterministic input handed to the LLM (PTCF 'Context')."""
+    github_username: str
+    period_start: str
+    period_end: str
+    commits: int
+    prs_opened: int
+    prs_merged: int
+    issues_opened: int
+    reviews: int
+    repos_active: list[str]
+    streak_days: int
+    waiting_prs: list[WaitingPR] = []
+    deltas: dict[str, int] = {}          # e.g. {"commits": 4, "prs_opened": -1}
+
+
+class DigestResult(BaseModel):
+    """The validated LLM output. Any provider must produce exactly this shape."""
+    headline: str
+    highlights: list[str]
+    streak_comment: str
+    top_repo: Optional[str] = None
+    coaching_tip: str
+    momentum: Literal["rising", "steady", "declining"]
 
 
 # ── Digest Schemas ──────────────────────────────────────────────
