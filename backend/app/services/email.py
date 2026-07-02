@@ -16,7 +16,7 @@ from app.schemas import DigestResult, DigestContext
 
 logger = logging.getLogger("devpulse.email")
 
-_FONT = '-apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
+_FONT = "'Inter', -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif"
 _MOMENTUM = {
     "rising": ("#DCFCE7", "#166534"),
     "steady": ("#DCE2F3", "#151C27"),
@@ -148,9 +148,12 @@ def _build_digest_html(digest: DigestResult, context: DigestContext,
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="color-scheme" content="light only">
 <meta name="supported-color-schemes" content="light only">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {{ color-scheme: light only; supported-color-schemes: light only; }}
-  body {{ margin:0; padding:0; background:#F5F5F4; -webkit-text-size-adjust:100%; }}
+  body {{ margin:0; padding:0; background:#F5F5F4; -webkit-text-size-adjust:100%; font-family:{_FONT}; }}
 </style>
 </head>
 <body style="margin:0;padding:0;background:#F5F5F4;">
