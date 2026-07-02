@@ -39,14 +39,14 @@ def _delta(v: int) -> str:
 
 
 def _section_header(label: str) -> str:
-    return (f'<div style="font-size:13px;font-weight:600;letter-spacing:0.06em;'
+    return (f'<div style="font-size:13px;font-weight:600;letter-spacing:0.12em;'
             f'text-transform:uppercase;color:#1C1B1B;border-bottom:1px solid #EAEAEA;'
-            f'padding-bottom:6px;margin:0 0 16px;">{label}</div>')
+            f'padding-bottom:10px;margin:0 0 20px;">{label}</div>')
 
 
 def _waiting_rows(context: DigestContext) -> str:
     if not context.waiting_prs:
-        return ('<p style="font-size:14px;color:#585F6C;margin:0;">'
+        return ('<p style="font-size:14px;line-height:22px;color:#585F6C;margin:0;">'
                 'Nothing needs your review — you\'re clear.</p>')
     rows = []
     for pr in context.waiting_prs:
@@ -59,16 +59,21 @@ def _waiting_rows(context: DigestContext) -> str:
             pills.append(_pill("Draft", "#DCE2F3", "#151C27"))
         pills_html = "&nbsp;".join(pills)
         rows.append(f"""
-        <tr><td style="padding:12px 0;border-bottom:1px solid #EAEAEA;">
-          <div style="font-size:14px;color:#1C1B1B;margin:0 0 4px;">
-            <span style="color:#585F6C;font-size:12px;">{pr.repo}</span>
-            &nbsp;<span style="font-weight:600;"><a href="{pr.url}" style="color:#1C1B1B;text-decoration:none;">{pr.title}</a></span>
-          </div>
-          <div style="font-size:12px;color:#6B7280;">
-            {pr.age_days}d ago &nbsp; <span style="color:#059669;">+{pr.additions}</span>
-            &nbsp;<span style="color:#E11D48;">-{pr.deletions}</span>
-            &nbsp; {pr.changed_files} files &nbsp; {pills_html}
-          </div>
+        <tr><td style="padding:14px 0;border-bottom:1px solid #EAEAEA;">
+          <table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr>
+            <td valign="top" style="padding-right:12px;">
+              <div style="font-size:14px;line-height:20px;margin:0 0 5px;">
+                <span style="color:#777585;font-size:12px;">{pr.repo}</span>
+                &nbsp;<a href="{pr.url}" style="color:#1C1B1B;font-weight:500;text-decoration:none;">{pr.title}</a>
+              </div>
+              <div style="font-size:12px;line-height:16px;color:#777585;">
+                {pr.age_days}d ago &nbsp;&nbsp; <span style="color:#059669;">+{pr.additions}</span>
+                &nbsp;<span style="color:#E11D48;">-{pr.deletions}</span>
+                &nbsp;&nbsp; {pr.changed_files} files
+              </div>
+            </td>
+            <td valign="top" align="right" style="white-space:nowrap;">{pills_html}</td>
+          </tr></table>
         </td></tr>""")
     return (f'<table width="100%" cellpadding="0" cellspacing="0" role="presentation">'
             f'{"".join(rows)}</table>')
@@ -114,15 +119,15 @@ def _build_digest_html(digest: DigestResult, context: DigestContext,
         <td align="right" style="font-size:12px;color:#464553;">{period_start} – {period_end}&nbsp;&nbsp;{momentum_pill}</td>
       </tr></table>
     </td></tr>
-    <tr><td style="background:#FFFFFF;border:1px solid #EAEAEA;border-radius:12px;padding:32px;">
-      <p style="font-size:15px;color:#1C1B1B;margin:0 0 32px;">{digest.headline}</p>
+    <tr><td style="background:#FFFFFF;border:1px solid #EAEAEA;border-radius:12px;padding:40px;box-shadow:0 4px 12px rgba(0,0,0,0.03);">
+      <p style="font-size:15px;line-height:24px;color:#1C1B1B;margin:0 0 40px;">{digest.headline}</p>
 
-      <div style="margin-bottom:32px;">
+      <div style="margin-bottom:40px;">
         {_section_header("&#9889; Waiting on you")}
         {_waiting_rows(context)}
       </div>
 
-      <div style="margin-bottom:32px;">
+      <div style="margin-bottom:40px;">
         {_section_header("&#128202; Your activity")}
         {stats}
         {streak}
@@ -133,7 +138,7 @@ def _build_digest_html(digest: DigestResult, context: DigestContext,
         {_repo_chips(context)}
       </div>
     </td></tr>
-    <tr><td style="padding:24px 4px;text-align:center;font-size:12px;color:#585F6C;">
+    <tr><td style="padding:32px 4px;text-align:center;font-size:12px;line-height:18px;color:#777585;">
       <a href="{settings.frontend_url}/settings" style="color:#4241BC;text-decoration:underline;">Manage digest settings</a><br/>
       Generated {period_end} · DevPulse
     </td></tr>
