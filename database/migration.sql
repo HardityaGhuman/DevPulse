@@ -16,3 +16,12 @@ ALTER TABLE digests
 -- 4. Enable RLS backstop (backend service role bypasses it).
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE digests ENABLE ROW LEVEL SECURITY;
+
+-- ── Interval frequencies (v3) ────────────────────────────────────
+ALTER TABLE users ALTER COLUMN digest_frequency SET DEFAULT 'off';
+ALTER TABLE users DROP COLUMN IF EXISTS digest_day;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_digest_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS cached_digest JSONB;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS cached_at TIMESTAMPTZ;
+UPDATE users SET digest_frequency='off'
+  WHERE digest_frequency NOT IN ('off','6h','12h','daily','weekly');
