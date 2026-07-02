@@ -5,7 +5,7 @@
 */
 
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth, SignInButton } from "@clerk/clerk-react";
+import { useAuth, SignInButton, SignUpButton } from "@clerk/clerk-react";
 import { motion } from "framer-motion";
 import DigestSample from "@/components/DigestSample";
 
@@ -40,6 +40,29 @@ function SignInPill({ className = "" }) {
     <SignInButton mode="modal" forceRedirectUrl="/dashboard">
       <button className={`btn-dark px-6 py-3 ${className}`}>Sign in with GitHub</button>
     </SignInButton>
+  );
+}
+
+/* Nav auth: explicit Log in + Sign up for returning vs new users. */
+function NavAuth() {
+  const { isSignedIn } = useAuth();
+  const navigate = useNavigate();
+  if (isSignedIn) {
+    return (
+      <button onClick={() => navigate("/dashboard")} className="btn-dark px-6 py-3">
+        Open dashboard
+      </button>
+    );
+  }
+  return (
+    <div className="flex items-center gap-5">
+      <SignInButton mode="modal" forceRedirectUrl="/dashboard">
+        <button className="mono" style={{ color: "var(--color-ink)" }}>Log in</button>
+      </SignInButton>
+      <SignUpButton mode="modal" forceRedirectUrl="/dashboard">
+        <button className="btn-dark px-6 py-3">Sign up</button>
+      </SignUpButton>
+    </div>
   );
 }
 
@@ -99,7 +122,7 @@ export default function LandingPage() {
       <div className="glass-nav sticky top-0 z-50">
         <div className={`${PAGE} py-4 flex justify-between items-center`}>
           <Link to="/" className="serif" style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em" }}>DEVPULSE</Link>
-          <SignInPill />
+          <NavAuth />
         </div>
       </div>
       <div className={`${PAGE} pt-4`}>
@@ -247,7 +270,7 @@ export default function LandingPage() {
           <div className="flex gap-6">
             <a className="mono" href="https://github.com/HardityaGhuman/DevPulse" target="_blank" rel="noreferrer">GitHub</a>
           </div>
-          <div className="mono" style={{ color: "var(--color-muted)" }}>© 2026 · built for developers</div>
+          <div className="mono" style={{ color: "var(--color-muted)" }}>2026 · built for developers</div>
         </div>
       </footer>
     </div>
