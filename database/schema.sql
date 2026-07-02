@@ -11,9 +11,11 @@ CREATE TABLE users (
   clerk_id TEXT UNIQUE NOT NULL,
   email TEXT NOT NULL,
   github_username TEXT,
-  digest_frequency TEXT DEFAULT 'daily',
-  digest_day TEXT DEFAULT 'monday',
+  digest_frequency TEXT DEFAULT 'off',   -- off | 6h | 12h | daily | weekly
   tracked_repos TEXT[],
+  last_digest_at TIMESTAMPTZ,            -- when the last digest was sent (due-tracking)
+  cached_digest JSONB,                   -- {result, context} cache for dashboard preview
+  cached_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 
