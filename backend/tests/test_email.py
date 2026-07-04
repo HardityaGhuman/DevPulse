@@ -29,25 +29,27 @@ def test_html_contains_facts_and_sections():
     assert "Added memory adapter" in html            # work-log headline
     assert "2 commits" in html                       # grouped commit count
     assert "PRS MERGED" in html                      # stat label
-    assert 'DAY <span style="color:#FB923C;">STREAK</span>' in html   # streak word is orange
+    assert '<span style="color:#EA580C;">DAY STREAK</span>' in html   # full streak label is orange
     assert "RISING" not in html                       # momentum/RISING badge dropped (Stitch spec)
     assert ">REVIEW</span>" not in html               # mac card carries only the CONFLICT pill
     assert "JUL 02, 2026" in html                     # broadsheet date format
     assert "+120" in html
     assert "14 files" in html
+    assert 'href="https://x/7"' in html                # PR mentions (card/attention) are links
     assert html.strip().startswith("<")
 
 
-def test_html_is_fixed_dark():
-    # Standardized 2026-07-03: the digest is fixed dark in every client; colors are inline
+def test_html_is_fixed_light():
+    # Standardized 2026-07-04: the digest is fixed light in every client; colors are inline
     # (several clients strip <style>, which would otherwise revert links to default blue).
+    # Light base because Gmail's mobile app inverts an already-dark email to light anyway.
     html = _build_digest_html(RES, CTX, "2026-07-01", "2026-07-02")
-    assert 'content="dark"' in html                   # dark-only color-scheme
+    assert 'content="light"' in html                  # light-only color-scheme
     assert "prefers-color-scheme" not in html         # theme-flip removed
-    assert "background-color:#0E0E12" in html         # dark sheet
-    assert "background-color:#121217" in html         # mac panel stays its own dark
-    assert 'style="color:#FFFFFF;text-decoration:none;font-weight:700;">' in html \
-        or "color:#FFFFFF;text-decoration:none" in html   # links carry inline color (no Gmail blue)
+    assert "background-color:#FFFFFF" in html         # paper-white sheet
+    assert "background-color:#F9F9F8" in html          # mac panel tint (card on white)
+    assert "box-shadow:" in html                       # newspaper drop shadow on the frame
+    assert "color:#1A1C1C;text-decoration:none" in html   # links carry inline color (no Gmail blue)
 
 
 def test_html_empty_states():
