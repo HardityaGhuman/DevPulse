@@ -10,7 +10,7 @@ previews don't re-hit the LLM.
 import json
 import logging
 from datetime import datetime, timedelta, timezone
-from app.schemas import DigestContext, DigestResult, WaitingPR
+from app.schemas import DigestContext, DigestResult, WaitingPR, ShippedPR, WorkItem
 from app.clients import github, clerk
 from app.services.ai import generate_digest
 from app.services.email import send_digest_email
@@ -18,7 +18,7 @@ from app.database import get_supabase
 
 logger = logging.getLogger("devpulse.digest")
 
-_DELTA_KEYS = ("commits", "prs_opened", "issues_opened", "reviews")
+_DELTA_KEYS = ("commits", "prs_opened", "prs_merged", "issues_opened", "reviews")
 _INTERVAL_HOURS = {"6h": 6, "12h": 12, "daily": 24, "weekly": 168}
 _CACHE_TTL = timedelta(hours=1)
 _DUE_GRACE = timedelta(minutes=30)
@@ -66,6 +66,12 @@ async def build_context(user: dict, period_start: str, period_end: str) -> Diges
 
     contrib = await github.fetch_contributions(username, token, period_start, period_end)
     waiting = await github.fetch_waiting_prs(username, token)
+    merged = await github.fetch_merged_prs(username, token, period_start)
+    work = await github.fetch_work_log(username, token, period_start)
+
+    # contributionsCollection can't report merged PRs — override its placeholder 0 with the
+    # honest search count so the "Shipped" stat and its delta are real.
+    contrib["prs_merged"] = merged["count"]
     prev = _previous_counts(user["id"])
     deltas = {k: contrib[k] - int(prev.get(k, 0)) for k in _DELTA_KEYS}
 
@@ -77,6 +83,8 @@ async def build_context(user: dict, period_start: str, period_end: str) -> Diges
         reviews=contrib["reviews"], repos_active=contrib["repos_active"],
         streak_days=contrib["streak_days"],
         waiting_prs=[WaitingPR(**w) for w in waiting],
+        shipped_prs=[ShippedPR(**p) for p in merged["prs"]],
+        work_log=[WorkItem(**w) for w in work],
         deltas=deltas,
     )
 
