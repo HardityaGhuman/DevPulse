@@ -7,14 +7,17 @@ headline — every other line is rendered from GitHub data, never invented.
 
 The layout is a hand-built, email-safe (tables + inline styles) port of the Stitch screen
 "DevPulse Responsive Email Digest - Light/Dark Comparison" (project: DevPulse Editorial
-Dashboard), standardized on the DARK variant: the digest is fixed dark in every client,
-regardless of system theme (decision 2026-07-03 — replaces the earlier prefers-color-scheme
-responsive approach). Every color is INLINE: several clients (Gmail apps especially) strip
-<style> blocks, which is also why links must carry their color inline or they render the
-client's default blue.
+Dashboard), standardized on the LIGHT variant: the digest is fixed light in every client,
+regardless of system theme (decision 2026-07-04 — replaces the earlier fixed-dark approach).
+Reason: Gmail's mobile app runs its own dark-mode color engine that strips our declarations
+and inverts an already-dark email to light anyway; rather than fight it, we ship a light base
+so our design and the app's remap agree. Every color is still INLINE: several clients (Gmail
+apps especially) strip <style> blocks, which is also why links must carry their color inline
+or they render the client's default blue.
 
-The mac-window preview card keeps its own darker panel (#121217) with white text — it's an
-app screenshot inside the dark sheet.
+The sheet is paper-white (#FFFFFF) framed by a darker border + drop shadow for a newspaper feel;
+the mac-window preview card uses a subtle tint (#F9F9F8) so it still reads as a card on the
+white sheet — an app screenshot with dark text.
 
 Icons are monochrome Unicode text-glyphs (U+FE0E variation selector) on the meaning-carrying
 sections only: AI Summary (✦), Work in Progress (<>), Needs Attention (⚠︎), card lightning.
@@ -61,18 +64,22 @@ def _fmt_date(value: str) -> str:
 _SERIF = "'Playfair Display', Georgia, 'Times New Roman', serif"
 _SANS = "'Inter', -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
 _MONO = "'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace"
+# Stat numerals: webfonts don't load in email, so fall back to Times (LINING figures) not
+# Georgia (OLDSTYLE — 6/8 ride high, 3/4/7/9 drop below baseline → the stat row looked jagged).
+_NUM = "'Playfair Display', 'Times New Roman', Times, serif"
 
-# Fixed dark palette (the standardized theme) — always inline, never class-only.
-_BG = "#0E0E12"          # sheet background
-_INK = "#FFFFFF"         # primary text
-_MUTED = "#A1A1AA"       # secondary text
-_BRAND = "#8B8BF5"       # indigo accent (dark-theme value)
-_POS = "#4ade80"         # additions / up-deltas
-_NEG = "#f87171"         # deletions / down-deltas
-_STREAK = "#FB923C"      # streak orange
-_HAIR = "#2D2D35"        # hairlines / borders
-_CHIP_BG = "#1A1A22"     # icon chips
-_CARD_BG = "#121217"     # mac-window panel (darker than the sheet)
+# Fixed light palette (the standardized theme) — always inline, never class-only.
+_BG = "#FFFFFF"          # sheet + body background (paper white)
+_INK = "#1A1C1C"         # primary text (near-black)
+_MUTED = "#71717A"       # secondary text (zinc-500 — legible on white)
+_BRAND = "#5B5BD6"       # indigo accent (light-theme value, matches frontend)
+_POS = "#16A34A"         # additions / up-deltas (green-600, readable on light)
+_NEG = "#DC2626"         # deletions / down-deltas (red-600)
+_STREAK = "#EA580C"      # streak orange (orange-600, darker for light bg)
+_HAIR = "#EAEAEA"        # inner hairlines / rules
+_EDGE = "#D4D4D8"        # sheet frame border (darker — the newspaper edge)
+_CHIP_BG = "#F3F4F3"     # icon chips
+_CARD_BG = "#F9F9F8"     # mac-window panel (subtle tint so it reads as a card on white)
 
 # Monochrome text-glyphs (U+FE0E forces text, not emoji, presentation).
 _ICON_AI = "&#10022;"                 # ✦ four-pointed star (auto_awesome)
@@ -150,45 +157,46 @@ def _summary_facts(context: DigestContext) -> str:
 
 
 def _mac_card(context: DigestContext) -> str:
-    """Dark 'inbox preview' panel — the standardized dark-base / white-text rendering."""
+    """Light 'inbox preview' panel — white card / dark text, an app screenshot on the sheet."""
     if context.waiting_prs:
         pr = context.waiting_prs[0]
         conflict = (f'<td align="right" valign="top" style="white-space:nowrap;padding-left:8px;">'
                     f'<span style="display:inline-block;padding:1px 4px;border-radius:2px;'
-                    f'border:1px solid rgba(249,115,22,0.5);font-family:{_MONO};font-size:7px;'
+                    f'border:1px solid {_STREAK};font-family:{_MONO};font-size:7px;'
                     f'letter-spacing:0.05em;color:{_STREAK};">CONFLICT</span></td>'
                     if pr.mergeable == "CONFLICTING" else '<td></td>')
         body = (
-            f'<div style="border-bottom:1px solid rgba(255,255,255,0.1);padding:8px 0 12px;">'
+            f'<div style="border-bottom:1px solid {_HAIR};padding:8px 0 12px;">'
             f'<table width="100%" role="presentation" cellpadding="0" cellspacing="0"><tr>'
             f'<td valign="top" style="font-family:{_MONO};font-size:10px;font-weight:500;'
             f'color:{_INK};">{_esc(pr.repo)} #{pr.number}</td>{conflict}</tr></table>'
             f'<p style="font-family:{_SANS};font-size:11px;font-weight:500;color:{_INK};'
-            f'margin:4px 0;">{_esc(pr.title)}</p>'
+            f'margin:4px 0;"><a href="{_safe_url(pr.url)}" style="color:{_INK};'
+            f'text-decoration:none;font-weight:500;">{_esc(pr.title)}</a></p>'
             f'<div style="font-family:{_MONO};font-size:8px;">'
             f'<span style="color:{_POS};">+{pr.additions}</span>&nbsp;&nbsp;'
             f'<span style="color:{_NEG};">-{pr.deletions}</span>&nbsp;&nbsp;'
-            f'<span style="color:rgba(255,255,255,0.4);">{pr.changed_files} files</span></div>'
+            f'<span style="color:{_MUTED};">{pr.changed_files} files</span></div>'
             f'</div>')
     else:
         body = (f'<p style="font-family:{_SANS};font-size:11px;color:{_MUTED};margin:4px 0;">'
                 f'Inbox zero — nothing waiting.</p>')
 
     return f"""
-    <div style="background-color:{_CARD_BG};border:1px solid rgba(255,255,255,0.1);border-radius:12px;overflow:hidden;">
-      <div style="padding:8px 16px;border-bottom:1px solid rgba(255,255,255,0.1);">
+    <div style="background-color:{_CARD_BG};border:1px solid {_HAIR};border-radius:12px;overflow:hidden;">
+      <div style="padding:8px 16px;border-bottom:1px solid {_HAIR};">
         <table width="100%" role="presentation" cellpadding="0" cellspacing="0"><tr>
           <td style="font-size:0;line-height:0;">
             <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background-color:#FF5F56;"></span>
             <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background-color:#FFBD2E;margin-left:6px;"></span>
             <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background-color:#27C93F;margin-left:6px;"></span>
           </td>
-          <td align="right" style="font-family:{_MONO};font-size:8px;letter-spacing:0.1em;color:rgba(255,255,255,0.4);">INBOX &middot; 8:00 AM</td>
+          <td align="right" style="font-family:{_MONO};font-size:8px;letter-spacing:0.1em;color:{_MUTED};">INBOX &middot; 8:00 AM</td>
         </tr></table>
       </div>
       <div style="padding:16px;">
-        <div style="font-family:{_MONO};font-size:8px;color:rgba(255,255,255,0.4);">DEVPULSE &middot; ISSUE 001</div>
-        <div style="font-family:{_MONO};font-size:9px;color:rgba(255,255,255,0.6);margin:16px 0 0;">{_ICON_BOLT}&nbsp;WAITING ON YOU</div>
+        <div style="font-family:{_MONO};font-size:8px;color:{_MUTED};">DEVPULSE &middot; ISSUE 001</div>
+        <div style="font-family:{_MONO};font-size:9px;color:{_MUTED};margin:16px 0 0;">{_ICON_BOLT}&nbsp;WAITING ON YOU</div>
         {body}
       </div>
     </div>"""
@@ -280,7 +288,8 @@ def _section_attention(context: DigestContext) -> str:
                 f'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;'
                 f'background-color:{_BRAND};font-size:0;line-height:0;">&nbsp;</span></td>'
                 f'<td valign="top">'
-                f'<p style="font-family:{_SANS};font-size:14px;font-weight:700;color:{_INK};margin:0;line-height:1.4;">{kind} #{p.number} in {_esc(p.repo)}</p>'
+                f'<p style="font-family:{_SANS};font-size:14px;font-weight:700;color:{_INK};margin:0;line-height:1.4;">'
+                f'<a href="{_safe_url(p.url)}" style="color:{_INK};text-decoration:none;font-weight:700;">{kind} #{p.number} in {_esc(p.repo)}</a></p>'
                 f'<p style="font-family:{_SANS};font-size:12px;color:{_MUTED};margin:0;line-height:1.5;">{_attention_status(p)}</p>'
                 f'</td></tr></table>')
         content = "".join(bullets)
@@ -335,28 +344,28 @@ def _section_work_log(context: DigestContext) -> str:
 
 # ── Section 6 — Last 7 days (stat strip) ─────────────────────────
 
-def _stat(label: str, value, delta_key: str, context: DigestContext) -> str:
-    if delta_key:
-        d = _delta(context.deltas.get(delta_key, 0))
-    else:
-        d = f'<span style="font-family:{_MONO};font-size:9px;color:{_MUTED};">&mdash;</span>'
-    return (f'<td align="center" valign="top" width="16%" style="padding:0 4px;">'
-            f'<div style="font-family:{_SERIF};font-size:28px;font-weight:700;color:{_INK};line-height:1.2;margin-bottom:4px;">{value}</div>'
+def _stat(label: str, value, delta_key: str, context: DigestContext,
+          value_color: str = _INK) -> str:
+    # Show a delta chip ONLY when there's a real move; no key or a flat 0 → nothing (no dash).
+    v = context.deltas.get(delta_key, 0) if delta_key else 0
+    delta = f'<div style="margin-top:8px;">{_delta(v)}</div>' if v else ''
+    return (f'<td align="center" valign="top" width="16.66%" style="padding:0 4px;">'
+            f'<div style="font-family:{_NUM};font-size:28px;font-weight:700;color:{value_color};line-height:1.2;margin-bottom:4px;">{value}</div>'
             f'<div style="font-family:{_MONO};font-size:8px;font-weight:500;color:{_MUTED};letter-spacing:0.05em;">{label}</div>'
-            f'<div style="margin-top:8px;">{d}</div></td>')
+            f'{delta}</td>')
 
 
 def _section_stats(context: DigestContext) -> str:
-    # "DAY STREAK" with the word STREAK in orange — no separate delta line (redundant).
-    streak_label = f'DAY <span style="color:{_STREAK};">STREAK</span>'
+    # Streak is the accent column: orange numeral + full orange label. No delta (redundant).
+    streak_label = f'<span style="color:{_STREAK};">DAY STREAK</span>'
     strip = (
-        f'<table width="100%" role="presentation" cellpadding="0" cellspacing="0"><tr>'
+        f'<table width="100%" role="presentation" cellpadding="0" cellspacing="0" style="table-layout:fixed;"><tr>'
         f'{_stat("PRS OPENED", context.prs_opened, "prs_opened", context)}'
         f'{_stat("PRS MERGED", context.prs_merged, "prs_merged", context)}'
         f'{_stat("REVIEWS GIVEN", context.reviews, "reviews", context)}'
         f'{_stat("ISSUES OPENED", context.issues_opened, "issues_opened", context)}'
         f'{_stat("REPOS ACTIVE", len(context.repos_active), "", context)}'
-        f'{_stat(streak_label, context.streak_days, "", context)}'
+        f'{_stat(streak_label, context.streak_days, "", context, value_color=_STREAK)}'
         f'</tr></table>')
     return f'{_label("6", "Last 7 Days")}{_rule()}<div style="padding-top:32px;">{strip}</div>'
 
@@ -410,7 +419,7 @@ def _build_digest_html(digest: DigestResult, context: DigestContext,
   <table width="640" role="presentation" cellpadding="0" cellspacing="0" align="center"
          bgcolor="{_BG}" style="max-width:640px;margin:0 auto;background-color:{_BG};">
     <tr><td style="padding:0;">
-      <div style="border:1px solid {_HAIR};">
+      <div style="border:1px solid {_EDGE};box-shadow:0 1px 2px rgba(0,0,0,0.06),0 14px 40px rgba(0,0,0,0.12);">
       <div style="padding:32px 32px 16px;">{masthead}</div>
       <div style="margin:0 32px;">{_rule()}</div>
       <div style="padding:40px 32px;">
@@ -432,17 +441,17 @@ def _build_digest_html(digest: DigestResult, context: DigestContext,
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="color-scheme" content="dark">
-<meta name="supported-color-schemes" content="dark">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600;1,700&family=Playfair+Display:wght@700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-  :root {{ color-scheme: dark; supported-color-schemes: dark; }}
+  :root {{ color-scheme: light; supported-color-schemes: light; }}
   body {{ margin:0; padding:0; -webkit-text-size-adjust:100%; background:{_BG}; }}
 </style>
 </head>
-<body bgcolor="{_BG}" style="margin:0;padding:24px 12px;background-color:{_BG};">
+<body bgcolor="{_BG}" style="margin:0;padding:40px 16px;background-color:{_BG};">
 {body}
 </body>
 </html>"""
