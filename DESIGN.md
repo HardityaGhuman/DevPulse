@@ -112,20 +112,47 @@ React building blocks:
 The UI must only show data the backend actually produces. Reference: `DigestContext` /
 `services/email.py` / `clients/github.py`.
 - **Allowed stats:** commits, PRs opened, PRs merged, issues, reviews, streak, momentum
-  (rising/steady/declining), and waiting-PRs (repo, #, title, +add/−del, files,
-  `Conflict` / `Review requested` / `Draft`).
+  (rising/steady/declining); waiting-PRs (repo, #, title, +add/−del, files,
+  `Conflict` / `Review requested` / `Draft`); **shipped PRs** (repo, #, title — from
+  `shipped_prs`); **today's work** (commit headlines grouped with a count — from `work_log`).
 - **Forbidden:** any CI/"build success %" metric — not fetched (deferred). Mentions/review
   threads — not fetched. Do not invent data in mockups.
 
 ---
 
-## 8. Email must mirror this (Milestone 11)
+## 8. The digest email (implemented — Milestone 13, shipped + deployed)
 
-The digest email (`backend/app/services/email.py::_build_digest_html`) predates this system and
-must be refactored to match: serif masthead + dateline, mono section labels + metadata, indigo
-accent, hairline rules, the same composed rhythm — while staying **email-safe** (tables, inline
-styles, web fonts with system fallback) and **fixed-light / inversion-proof** (`color-scheme`
-lock). `DigestSample.jsx` is the target look.
+`backend/app/services/email.py::_build_digest_html` — a hand-built, **email-safe** port of this
+system (`DigestSample.jsx` is the visual target): serif masthead + dateline, mono section labels
++ metadata, indigo accent, hairline rules, the same composed rhythm. Fixed **light** in every
+client. Key deviations from the web, all forced by email reality:
+
+- **Why light, not a dark "inversion-proof" lock:** Gmail's mobile app runs its own dark-mode
+  engine that strips `<meta color-scheme>` + `<style>` and inverts an already-dark email to light
+  *regardless* — no sender controls it. So the email ships light so its base agrees with that
+  remap. `color-scheme: light` is declared but treated as best-effort, not a guarantee.
+- **Email-safe constraints:** tables + inline styles only. Clients strip `<style>`, so **every
+  color is inline** — including link colors, or links render Gmail-blue. Web fonts via `<link>`
+  with serif/sans/mono system fallbacks. Font stacks use **single quotes only** — a double quote
+  inside `style="…"` terminates the attribute and silently drops every later declaration.
+- **Palette** (email.py constants; tuned for email legibility, close to the web tokens): sheet+body
+  `#FFFFFF`, mac-card tint `#F9F9F8`, ink `#1A1C1C`, muted `#71717A`, brand `#5B5BD6`, additions
+  `#16A34A`, deletions `#DC2626`, streak/attention `#EA580C`, hairline `#EAEAEA`, sheet frame `#D4D4D8`.
+- **Newspaper frame:** white sheet, darker `#D4D4D8` border + drop shadow (shadow shows in Apple
+  Mail/browser; Gmail strips box-shadow, so the darker border carries the effect everywhere).
+- **Numerals:** stat figures use a **lining-figure** stack (Playfair→Times, NOT Georgia — Georgia's
+  oldstyle figures jag the baseline). Equal fixed columns; deltas show only on a real move (no dashes).
+- **Dateline = the delivery moment** (date + time, IST) — a publication date, not the digest's
+  period boundary, so date and time never split.
+- **Subject leads with the AI headline** (unique per run) so Gmail doesn't thread same-subject
+  sends and collapse the repeats behind trimmed-content toggles.
+- **Glyphs:** monochrome Unicode text-glyphs (U+FE0E) only on meaning-carrying sections —
+  ✦ AI, `<>` WIP, ⚠︎ Attention, ⚡︎ card. No webfont icons, no color emoji.
+- **Sections (spec order):** 1 AI Summary + mac card · 2 Shipped Today (`shipped_prs`) · 3 Work in
+  Progress + 4 Needs Attention (`waiting_prs`) · 5 Today's Work (`work_log`) · 6 Last 7 Days.
+  PR mentions are links holding their inline color/style; work-log items aren't linked
+  (`WorkItem` has no url).
+- **Security:** every dynamic value `html.escape`d; hrefs scheme-checked (http/https, else `#`).
 
 ---
 
