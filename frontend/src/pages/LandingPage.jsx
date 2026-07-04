@@ -1,262 +1,276 @@
-import { Link } from "react-router-dom";
+/*
+  DevPulse — Landing page. Gridded editorial / broadsheet aesthetic.
+  Serif display + mono labels, hairline rules, asymmetric 12-col grid.
+  All feature copy is grounded in what the backend actually produces.
+*/
+
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth, SignInButton, SignUpButton } from "@clerk/clerk-react";
 import { motion } from "framer-motion";
-import { SignedIn, SignedOut } from "@clerk/clerk-react";
-import {
-  Code2,
-  GitPullRequest,
-  Mail,
-  Zap,
-  Shield,
-  BarChart3,
-  ArrowRight,
-  Activity,
-} from "lucide-react";
+import DigestSample from "@/components/DigestSample";
 
-const fadeUp = {
-  initial: { opacity: 0, y: 20 },
-  animate: { opacity: 1, y: 0 },
-};
+const PAGE = "max-w-[1200px] mx-auto px-6 md:px-20";
 
-const features = [
-  {
-    icon: Code2,
-    title: "AI Code Review",
-    description:
-      "Paste any code snippet and get instant, structured feedback — bugs, security issues, and improvement suggestions.",
-  },
-  {
-    icon: GitPullRequest,
-    title: "PR Analysis",
-    description:
-      "Drop a GitHub PR URL and get a full review with file-level verdicts, risk assessment, and merge recommendations.",
-  },
-  {
-    icon: Mail,
-    title: "Smart Digests",
-    description:
-      "Automated daily or weekly email digests that summarize your GitHub activity with personalized coaching tips.",
-  },
-  {
-    icon: Shield,
-    title: "Security Scanning",
-    description:
-      "Every review includes dedicated security analysis with severity ratings and actionable remediation steps.",
-  },
-  {
-    icon: BarChart3,
-    title: "Momentum Tracking",
-    description:
-      "Track your development momentum over time — rising, steady, or declining — with AI-driven insights.",
-  },
-  {
-    icon: Zap,
-    title: "Instant Results",
-    description:
-      "Powered by Gemini 2.5 Flash for lightning-fast reviews. Get comprehensive feedback in seconds, not minutes.",
-  },
-];
+/* Fade + rise as the element scrolls into view. */
+function Reveal({ children, delay = 0, className = "" }) {
+  return (
+    <motion.div
+      className={className}
+      initial={{ opacity: 0, y: 26 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-80px" }}
+      transition={{ duration: 0.6, delay, ease: [0.22, 1, 0.36, 1] }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+function SignInPill({ className = "" }) {
+  const { isSignedIn } = useAuth();
+  const navigate = useNavigate();
+  if (isSignedIn) {
+    return (
+      <button onClick={() => navigate("/dashboard")} className={`btn-dark px-6 py-3 ${className}`}>
+        Open dashboard
+      </button>
+    );
+  }
+  return (
+    <SignInButton mode="modal" forceRedirectUrl="/dashboard">
+      <button className={`btn-dark px-6 py-3 ${className}`}>Sign in with GitHub</button>
+    </SignInButton>
+  );
+}
+
+/* Nav auth: explicit Log in + Sign up for returning vs new users. */
+function NavAuth() {
+  const { isSignedIn } = useAuth();
+  const navigate = useNavigate();
+  if (isSignedIn) {
+    return (
+      <button onClick={() => navigate("/dashboard")} className="btn-dark px-6 py-3">
+        Open dashboard
+      </button>
+    );
+  }
+  return (
+    <div className="flex items-center gap-5">
+      <SignInButton mode="modal" forceRedirectUrl="/dashboard">
+        <button className="mono" style={{ color: "var(--color-ink)" }}>Log in</button>
+      </SignInButton>
+      <SignUpButton mode="modal" forceRedirectUrl="/dashboard">
+        <button className="btn-dark px-6 py-3">Sign up</button>
+      </SignUpButton>
+    </div>
+  );
+}
+
+/* One feature row on the 12-col grid. `flip` puts the card on the left. */
+function Feature({ num, label, heading, accent, tail, lede, card, flip }) {
+  return (
+    <section style={{ borderTop: "1px solid var(--color-hairline)" }}>
+      <div className={`${PAGE} py-24 md:py-32`}>
+        <Reveal className="grid grid-cols-1 md:grid-cols-12 gap-8">
+          <div className="md:col-span-2">
+            <p className="mono" style={{ color: "var(--color-muted)" }}>{num} — {label}</p>
+          </div>
+
+          {flip ? (
+            <>
+              <div className="md:col-start-3 md:col-span-3">{card}</div>
+              <div className="md:col-start-6 md:col-span-5">
+                <h2 className="serif" style={{ fontSize: 44, fontWeight: 700, lineHeight: 1.15, margin: 0 }}>
+                  {heading} <span className="italic" style={{ color: "var(--color-accent)" }}>{accent}</span> {tail}
+                </h2>
+                <p className="mt-6" style={{ fontSize: 20, lineHeight: 1.6, color: "var(--color-ink)", maxWidth: "55ch" }}>
+                  {lede}
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="md:col-start-3 md:col-span-5">
+                <h2 className="serif" style={{ fontSize: 44, fontWeight: 700, lineHeight: 1.15, margin: 0 }}>
+                  {heading} <span className="italic" style={{ color: "var(--color-accent)" }}>{accent}</span> {tail}
+                </h2>
+                <p className="mt-6" style={{ fontSize: 20, lineHeight: 1.6, color: "var(--color-ink)", maxWidth: "55ch" }}>
+                  {lede}
+                </p>
+              </div>
+              <div className="md:col-start-8 md:col-span-4">{card}</div>
+            </>
+          )}
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
+function MiniCard({ children }) {
+  return (
+    <div className="glass p-6 flex flex-col gap-4" style={{ borderRadius: 10 }}>
+      {children}
+    </div>
+  );
+}
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-background relative overflow-hidden">
-      {/* Background Decor */}
-      <div className="absolute top-0 left-1/4 w-96 h-96 bg-accent/20 rounded-full blur-[128px] -z-10 animate-pulse" />
-      <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-accent-alt/10 rounded-full blur-[128px] -z-10" />
-
-      {/* Navbar */}
-      <nav className="glass border-b border-border sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-accent to-accent-alt flex items-center justify-center shadow-lg shadow-accent/20">
-              <Activity className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-xl font-bold tracking-tight text-primary">DevPulse</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <SignedOut>
-              <Link
-                to="/sign-in"
-                className="text-sm font-medium text-muted hover:text-primary transition-colors no-underline"
-              >
-                Sign In
-              </Link>
-              <Link
-                to="/sign-up"
-                className="text-sm font-semibold bg-primary text-background px-5 py-2.5 rounded-lg hover:opacity-90 transition-all no-underline shadow-lg shadow-white/5"
-              >
-                Get Started
-              </Link>
-            </SignedOut>
-            <SignedIn>
-              <Link
-                to="/dashboard"
-                className="text-sm font-semibold bg-accent text-white px-5 py-2.5 rounded-lg hover:bg-accent/90 transition-all no-underline flex items-center gap-2 shadow-lg shadow-accent/20"
-              >
-                Dashboard <ArrowRight className="w-4 h-4" />
-              </Link>
-            </SignedIn>
-          </div>
+    <div style={{ background: "var(--color-page)" }}>
+      {/* masthead */}
+      <div className="glass-nav sticky top-0 z-50">
+        <div className={`${PAGE} py-4 flex justify-between items-center`}>
+          <Link to="/" className="serif" style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em" }}>DEVPULSE</Link>
+          <NavAuth />
         </div>
-      </nav>
+      </div>
+      <div className={`${PAGE} pt-4`}>
+        <p className="mono pb-8" style={{ color: "var(--color-muted)" }}>
+          A developer&apos;s daily brief · built on your GitHub
+        </p>
+      </div>
 
-      {/* Hero */}
-      <section className="relative pt-32 pb-40 px-4">
-        <div className="max-w-5xl mx-auto text-center relative z-10">
+      {/* hero */}
+      <section style={{ borderTop: "1px solid var(--color-hairline)" }}>
+        <div className={`${PAGE} py-24 md:py-32 flex flex-col md:flex-row gap-16 md:gap-8 items-center`}>
           <motion.div
-            initial={{ opacity: 0, y: 30 }}
+            className="w-full md:w-3/5"
+            initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, ease: "easeOut" }}
+            transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
           >
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-border bg-white/5 text-muted text-xs font-medium mb-10 backdrop-blur-sm animate-float">
-              <Zap className="w-3.5 h-3.5 text-accent fill-accent" />
-              <span className="bg-gradient-to-r from-accent to-accent-alt bg-clip-text text-transparent">
-                Powered by Google Gemini 2.5 Flash
-              </span>
-            </div>
-            <h1 className="text-6xl sm:text-7xl lg:text-8xl font-black tracking-tight mb-8 leading-[1.1]">
-              <span className="gradient-text">AI-powered</span>
-              <br />
-              <span className="text-primary">developer intelligence</span>
+            <h1 className="serif" style={{ fontSize: 68, fontWeight: 700, lineHeight: 1.08, letterSpacing: "-0.02em", margin: 0 }}>
+              The developer&apos;s<br />daily brief,<br />
+              <span className="italic" style={{ color: "var(--color-accent)" }}>filed automatically.</span>
             </h1>
-            <p className="text-xl sm:text-2xl text-muted max-w-3xl mx-auto mb-12 leading-relaxed font-medium">
-              Get instant code reviews, PR analysis, and personalized activity
-              digests. Ship better code with an AI copilot that actually
-              understands your workflow.
+            <p className="mt-8" style={{ fontSize: 20, lineHeight: 1.6, color: "var(--color-ink)", maxWidth: "36rem" }}>
+              DevPulse reads your GitHub activity and emails you a composed digest — commits,
+              reviews, streaks, and the pull requests waiting on you. On your schedule, not the
+              firehose.
             </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-6">
-              <SignedOut>
-                <Link
-                  to="/sign-up"
-                  className="group inline-flex items-center gap-2 bg-primary text-background px-10 py-4 rounded-xl text-lg font-bold hover:scale-105 transition-all no-underline shadow-xl shadow-white/5"
-                >
-                  Start reviewing for free
-                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                </Link>
-              </SignedOut>
-              <SignedIn>
-                <Link
-                  to="/dashboard"
-                  className="group inline-flex items-center gap-2 bg-accent text-white px-10 py-4 rounded-xl text-lg font-bold hover:scale-105 transition-all no-underline shadow-xl shadow-accent/20"
-                >
-                  Go to Dashboard
-                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                </Link>
-              </SignedIn>
-              <Link
-                to="/sign-in"
-                className="inline-flex items-center gap-2 text-primary hover:bg-white/5 px-10 py-4 rounded-xl text-lg font-semibold border border-white/10 transition-all no-underline backdrop-blur-sm"
-              >
-                View demo
-              </Link>
+            <div className="mt-12 flex items-center gap-6">
+              <SignInPill className="px-8 py-4" />
+              <a href="#sample" className="mono" style={{ color: "var(--color-ink)" }}>read a sample →</a>
             </div>
+          </motion.div>
+          <motion.div
+            className="w-full md:w-2/5"
+            id="sample"
+            initial={{ opacity: 0, y: 30, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.8, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <DigestSample />
           </motion.div>
         </div>
       </section>
 
-      {/* Features */}
-      <section className="py-32 px-4 relative">
-        <div className="absolute inset-0 bg-white/[0.02] -skew-y-3 transform origin-top-left -z-10" />
-        <div className="max-w-7xl mx-auto">
-          <motion.div
-            className="text-center mb-24"
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6 }}
-          >
-            <h2 className="text-4xl sm:text-5xl font-bold text-primary mb-6">
-              Everything you need to ship better code
-            </h2>
-            <p className="text-muted text-xl max-w-3xl mx-auto font-medium">
-              A complete developer intelligence toolkit — from instant reviews to
-              automated coaching.
-            </p>
-          </motion.div>
+      {/* 01 — ACCURATE */}
+      <Feature
+        num="01" label="ACCURATE"
+        heading="Every contribution," accent="counted." tail=""
+        lede="Real GitHub activity via GraphQL — commits, PRs, issues, reviews — across private and public repos, nothing missed."
+        card={
+          <MiniCard>
+            <div className="flex items-center gap-3 pb-4" style={{ borderBottom: "1px solid var(--color-hairline)" }}>
+              <span className="mono" style={{ color: "var(--color-accent)" }}>{"{ }"}</span>
+              <span className="mono">GraphQL · synced 2 min ago</span>
+            </div>
+            <div className="flex flex-col gap-2">
+              {["me/aria", "acme/api-services", "me/dotfiles"].map((r) => (
+                <span key={r} className="mono" style={{ textTransform: "none", fontSize: 13 }}>{r}</span>
+              ))}
+            </div>
+          </MiniCard>
+        }
+      />
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {features.map((feature, i) => (
-              <motion.div
-                key={feature.title}
-                className="glass-card p-8 rounded-3xl card-hover-effect"
-                variants={fadeUp}
-                initial="initial"
-                whileInView="animate"
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1, duration: 0.5 }}
-              >
-                <div className="w-14 h-14 rounded-2xl bg-accent/10 flex items-center justify-center mb-6 border border-accent/20">
-                  <feature.icon className="w-7 h-7 text-accent" />
+      {/* 02 — ACTION (card left) */}
+      <Feature
+        num="02" label="ACTION" flip
+        heading="The PRs" accent="waiting" tail="on you."
+        lede="Review-requested and your own open PRs, oldest first, with size and status flags so you know exactly what to touch."
+        card={
+          <MiniCard>
+            <p className="mono" style={{ color: "var(--color-muted)" }}>me/aria #124</p>
+            <p style={{ fontWeight: 600 }}>Refactor auth</p>
+            <div className="mono flex gap-3" style={{ fontSize: 12, textTransform: "none" }}>
+              <span style={{ color: "var(--color-ok)" }}>+254</span>
+              <span style={{ color: "var(--color-bad)" }}>−120</span>
+              <span style={{ color: "var(--color-muted)" }}>14 files</span>
+            </div>
+            <div className="flex flex-wrap gap-2 mt-1">
+              <span className="mono" style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, background: "var(--color-conflict-bg)", color: "var(--color-conflict-fg)", textTransform: "none" }}>Conflict</span>
+              <span className="mono" style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, border: "1px solid var(--color-accent)", color: "var(--color-accent)", textTransform: "none" }}>Review requested</span>
+            </div>
+          </MiniCard>
+        }
+      />
+
+      {/* 03 — CADENCE */}
+      <Feature
+        num="03" label="CADENCE"
+        heading="Your" accent="pace," tail="not the firehose."
+        lede="Choose delivery — off, every 6h, 12h, daily, or weekly. One composed email, never another dashboard to babysit."
+        card={
+          <MiniCard>
+            {["6h", "12h", "Daily", "Weekly"].map((o) => {
+              const on = o === "Daily";
+              return (
+                <div
+                  key={o}
+                  className="flex justify-between items-center px-3 py-2"
+                  style={on ? { background: "#fff", border: "1px solid var(--color-hairline)", borderRadius: 8 } : {}}
+                >
+                  <span className="mono" style={{ textTransform: "none", color: on ? "var(--color-accent)" : "var(--color-muted)", fontWeight: on ? 700 : 400 }}>
+                    {o}{on ? " ✓" : ""}
+                  </span>
                 </div>
-                <h3 className="text-2xl font-bold text-primary mb-4">
-                  {feature.title}
-                </h3>
-                <p className="text-muted text-lg leading-relaxed">
-                  {feature.description}
-                </p>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
+              );
+            })}
+          </MiniCard>
+        }
+      />
 
-      {/* CTA */}
-      <section className="py-40 px-4">
-        <div className="max-w-5xl mx-auto">
-          <motion.div
-            className="glass-card p-16 rounded-[40px] text-center relative overflow-hidden"
-            initial={{ opacity: 0, scale: 0.95 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6 }}
-          >
-            <div className="absolute top-0 right-0 w-64 h-64 bg-accent/10 rounded-full blur-[100px] -z-10" />
-            <div className="absolute bottom-0 left-0 w-64 h-64 bg-accent-alt/10 rounded-full blur-[100px] -z-10" />
-            
-            <h2 className="text-4xl sm:text-6xl font-bold text-primary mb-8 leading-tight">
-              Ready to level up <br /> your code?
-            </h2>
-            <p className="text-muted text-xl mb-12 max-w-2xl mx-auto font-medium">
-              Join thousands of developers who use AI to write better, more secure code every day.
-            </p>
-            <SignedOut>
-              <Link
-                to="/sign-up"
-                className="group inline-flex items-center gap-3 bg-primary text-background px-12 py-5 rounded-2xl text-xl font-bold hover:scale-105 transition-all no-underline shadow-2xl shadow-white/10"
-              >
-                Get started — it's free
-                <ArrowRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
-              </Link>
-            </SignedOut>
-            <SignedIn>
-              <Link
-                to="/dashboard"
-                className="group inline-flex items-center gap-3 bg-accent text-white px-12 py-5 rounded-2xl text-xl font-bold hover:scale-105 transition-all no-underline shadow-2xl shadow-accent/20"
-              >
-                Go to Dashboard
-                <ArrowRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
-              </Link>
-            </SignedIn>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="border-t border-border py-12 px-4 bg-background">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-8">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-accent to-accent-alt flex items-center justify-center shadow-lg shadow-accent/10">
-              <Activity className="w-5 h-5 text-white" />
+      {/* 04 — SCOPE (card left) */}
+      <Feature
+        num="04" label="SCOPE" flip
+        heading="Only the repos you" accent="care" tail="about."
+        lede="Track specific repositories, or leave it empty to cover everything. Mute the noise from legacy projects and monorepos."
+        card={
+          <MiniCard>
+            <p className="mono">Tracked</p>
+            <div className="flex flex-col gap-2">
+              {["me/aria", "core-libs"].map((r) => (
+                <span key={r} className="mono" style={{ textTransform: "none", fontSize: 13, padding: "4px 8px", background: "#fff", border: "1px solid var(--color-hairline)", borderRadius: 6 }}>{r}</span>
+              ))}
             </div>
-            <span className="text-xl font-bold text-primary tracking-tight">DevPulse</span>
+            <p className="mono italic" style={{ textTransform: "none", fontSize: 11, color: "var(--color-muted)" }}>empty = all repos</p>
+          </MiniCard>
+        }
+      />
+
+      {/* closing */}
+      <section style={{ borderTop: "1px solid var(--color-hairline)" }}>
+        <div className={`${PAGE} py-24 md:py-32`}>
+          <Reveal>
+            <h2 className="serif italic" style={{ fontSize: 64, fontWeight: 700, color: "var(--color-accent)", margin: "0 0 32px" }}>
+              Start your brief.
+            </h2>
+            <SignInPill className="px-8 py-4" />
+          </Reveal>
+        </div>
+      </section>
+
+      {/* footer */}
+      <footer className={`${PAGE} pb-10`}>
+        <div className="rule pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="serif" style={{ fontSize: 24, fontWeight: 700 }}>DEVPULSE</div>
+          <div className="flex gap-6">
+            <a className="mono" href="https://github.com/HardityaGhuman/DevPulse" target="_blank" rel="noreferrer">GitHub</a>
           </div>
-          <div className="flex items-center gap-8 text-muted font-medium">
-            <a href="#" className="hover:text-primary transition-colors no-underline">Terms</a>
-            <a href="#" className="hover:text-primary transition-colors no-underline">Privacy</a>
-            <a href="#" className="hover:text-primary transition-colors no-underline">Twitter</a>
-          </div>
-          <p className="text-sm text-muted font-medium">
-            © 2026 DevPulse · AI-driven intelligence
-          </p>
+          <div className="mono" style={{ color: "var(--color-muted)" }}>2026 · built for developers</div>
         </div>
       </footer>
     </div>
