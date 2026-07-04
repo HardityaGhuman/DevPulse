@@ -125,10 +125,12 @@ async def generate_and_deliver(user: dict) -> dict:
         "ai_summary": json.dumps(summary_blob),
     }, on_conflict="user_id,period_end").execute()
 
-    n = len(context.waiting_prs)
-    noun = "PR needs" if n == 1 else "PRs need"
-    subject = (f"DevPulse · {n} {noun} you · {context.period_end}"
-               if n else f"DevPulse · Activity summary · {context.period_end}")
+    # Subject leads with the AI headline: unique every run, so Gmail treats each digest as its
+    # own message instead of threading same-subject sends and trimming the repeats behind "…".
+    head = " ".join(result.headline.split()).strip()  # collapse any stray whitespace/newlines
+    if len(head) > 90:
+        head = head[:89].rstrip() + "…"
+    subject = f"DevPulse · {head}" if head else f"DevPulse · Daily brief · {context.period_end}"
     sent = await send_digest_email(
         to=user["email"], subject=subject, digest=result, context=context,
         period_start=context.period_start, period_end=context.period_end,
