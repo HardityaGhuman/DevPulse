@@ -141,6 +141,64 @@ async def fetch_waiting_prs(username: str, token: str) -> list[dict]:
     return merged
 
 
+_MERGED_QUERY = """
+query($q:String!) {
+  search(query:$q, type:ISSUE, first:20) {
+    issueCount
+    nodes {
+      ... on PullRequest {
+        number title url mergedAt
+        repository { nameWithOwner }
+      }
+    }
+  }
+}
+"""
+
+
+async def fetch_merged_prs(username: str, token: str, since: str) -> dict:
+    """PRs the user merged in the window — feeds "Shipped Today". Returns an honest count
+    (`issueCount`, not the capped node list) plus title/repo/url for each."""
+    q = f"is:pr is:merged author:{username} merged:>={since[:10]} archived:false"
+    async with httpx.AsyncClient(timeout=20) as client:
+        r = await client.post(GRAPHQL, headers=_headers(token),
+                              json={"query": _MERGED_QUERY, "variables": {"q": q}})
+        if r.status_code != 200:
+            return {"count": 0, "prs": []}
+        search = (r.json().get("data", {}).get("search", {}) or {})
+    prs = [{
+        "repo": n["repository"]["nameWithOwner"], "number": n["number"],
+        "title": n["title"], "url": n["url"],
+    } for n in (search.get("nodes") or []) if n]
+    return {"count": search.get("issueCount", len(prs)), "prs": prs}
+
+
+async def fetch_work_log(username: str, token: str, since: str) -> list[dict]:
+    """Human-readable work log from commit headlines in the window — feeds "Today's Work".
+    First line of each commit message only (no body); grouped by (repo, headline) with a
+    count. Never AI-interpreted — the commit author's own words, verbatim."""
+    q = f"author:{username} committer-date:>={since[:10]}"
+    async with httpx.AsyncClient(timeout=20) as client:
+        r = await client.get(f"{REST}/search/commits", headers=_headers(token),
+                             params={"q": q, "sort": "committer-date",
+                                     "order": "desc", "per_page": 50})
+        if r.status_code != 200:
+            return []
+        items = r.json().get("items", []) or []
+    grouped: dict[tuple[str, str], dict] = {}     # (repo, headline) -> {repo, headline, commits}
+    for it in items:
+        headline = (it.get("commit", {}).get("message") or "").split("\n", 1)[0].strip()
+        if not headline:
+            continue
+        repo = it.get("repository", {}).get("full_name", "")
+        key = (repo, headline)
+        if key in grouped:
+            grouped[key]["commits"] += 1
+        else:
+            grouped[key] = {"repo": repo, "headline": headline, "commits": 1}
+    return list(grouped.values())
+
+
 async def fetch_user_repos(token: str) -> list[dict]:
     """Slim REST list of the user's own repos for the frontend."""
     async with httpx.AsyncClient(timeout=20) as client:
