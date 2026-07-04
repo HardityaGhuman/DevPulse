@@ -1,16 +1,36 @@
 """
 DevPulse — Email Service (Resend only)
 
-Renders a clean, light-theme, email-safe digest (inline styles, table layout) and sends it
-via Resend. Facts come straight from DigestContext; the LLM contributes only the headline.
+Renders the editorial digest (broadsheet masthead, serif numerals, mono labels) and sends it
+via Resend. Facts come straight from DigestContext; the LLM contributes only the one-line
+headline — every other line is rendered from GitHub data, never invented.
 
-The email is a FIXED light theme. It does not follow the recipient's system theme; instead it
-locks to light via `color-scheme` meta + explicit bg/text on every element, so dark-mode email
-clients cannot auto-invert it into an unreadable mess.
+The layout is a hand-built, email-safe (tables + inline styles) port of the Stitch screen
+"DevPulse Responsive Email Digest - Light/Dark Comparison" (project: DevPulse Editorial
+Dashboard), standardized on the LIGHT variant: the digest is fixed light in every client,
+regardless of system theme (decision 2026-07-04 — replaces the earlier fixed-dark approach).
+Reason: Gmail's mobile app runs its own dark-mode color engine that strips our declarations
+and inverts an already-dark email to light anyway; rather than fight it, we ship a light base
+so our design and the app's remap agree. Every color is still INLINE: several clients (Gmail
+apps especially) strip <style> blocks, which is also why links must carry their color inline
+or they render the client's default blue.
+
+The sheet is paper-white (#FFFFFF) framed by a darker border + drop shadow for a newspaper feel;
+the mac-window preview card uses a subtle tint (#F9F9F8) so it still reads as a card on the
+white sheet — an app screenshot with dark text.
+
+Icons are monochrome Unicode text-glyphs (U+FE0E variation selector) on the meaning-carrying
+sections only: AI Summary (✦), Work in Progress (<>), Needs Attention (⚠︎), card lightning.
+No webfont icons (clients don't load them) and no color emoji.
+
+Section order mirrors the digest spec: 1 AI Summary · 2 Shipped · 3 Work in progress ·
+4 Needs attention · 5 Today's work · 6 Last 7 days.
 """
 
 import html
 import logging
+import re
+from datetime import datetime
 import resend
 from app.config import settings
 from app.schemas import DigestResult, DigestContext
@@ -19,7 +39,7 @@ logger = logging.getLogger("devpulse.email")
 
 
 def _esc(text: str) -> str:
-    """HTML-escape any dynamic text (PR titles, repo names, LLM headline)."""
+    """HTML-escape any dynamic text (PR titles, repo names, LLM headline, commit headlines)."""
     return html.escape(str(text), quote=True)
 
 
@@ -28,152 +48,410 @@ def _safe_url(url: str) -> str:
     u = str(url)
     return html.escape(u, quote=True) if u.startswith(("http://", "https://")) else "#"
 
-_FONT = "'Inter', -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif"
-_MOMENTUM = {
-    "rising": ("#DCFCE7", "#166534"),
-    "steady": ("#DCE2F3", "#151C27"),
-    "declining": ("#FEE2E2", "#991B1B"),
-}
+
+def _fmt_date(value: str) -> str:
+    """Broadsheet date: 'JUL 03, 2026'. Falls back to the raw string if it won't parse."""
+    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z"):
+        try:
+            return datetime.strptime(str(value), fmt).strftime("%b %d, %Y").upper()
+        except (ValueError, TypeError):
+            continue
+    return _esc(value)
 
 
-def _pill(text: str, bg: str, color: str, border: str = "") -> str:
-    b = f"border:1px solid {border};" if border else ""
-    return (f'<span style="display:inline-block;padding:2px 10px;border-radius:9999px;'
-            f'font-size:12px;font-weight:600;background:{bg};color:{color};{b}">{text}</span>')
+# NOTE: single quotes only — these land inside style="…" attributes, a double quote
+# would terminate the attribute early and silently drop every declaration after it.
+_SERIF = "'Playfair Display', Georgia, 'Times New Roman', serif"
+_SANS = "'Inter', -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+_MONO = "'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace"
+# Stat numerals: webfonts don't load in email, so fall back to Times (LINING figures) not
+# Georgia (OLDSTYLE — 6/8 ride high, 3/4/7/9 drop below baseline → the stat row looked jagged).
+_NUM = "'Playfair Display', 'Times New Roman', Times, serif"
+
+# Fixed light palette (the standardized theme) — always inline, never class-only.
+_BG = "#FFFFFF"          # sheet + body background (paper white)
+_INK = "#1A1C1C"         # primary text (near-black)
+_MUTED = "#71717A"       # secondary text (zinc-500 — legible on white)
+_BRAND = "#5B5BD6"       # indigo accent (light-theme value, matches frontend)
+_POS = "#16A34A"         # additions / up-deltas (green-600, readable on light)
+_NEG = "#DC2626"         # deletions / down-deltas (red-600)
+_STREAK = "#EA580C"      # streak orange (orange-600, darker for light bg)
+_HAIR = "#EAEAEA"        # inner hairlines / rules
+_EDGE = "#D4D4D8"        # sheet frame border (darker — the newspaper edge)
+_CHIP_BG = "#F3F4F3"     # icon chips
+_CARD_BG = "#F9F9F8"     # mac-window panel (subtle tint so it reads as a card on white)
+
+# Monochrome text-glyphs (U+FE0E forces text, not emoji, presentation).
+_ICON_AI = "&#10022;"                 # ✦ four-pointed star (auto_awesome)
+_ICON_ATTN = "&#9888;&#65038;"        # ⚠︎ warning triangle, text-presentation
+_ICON_BOLT = "&#9889;&#65038;"        # ⚡︎ lightning, text-presentation
+_ICON_CODE = "&lt;&gt;"               # <> (code)
+
+
+def _emphasize_headline(headline: str, context: DigestContext) -> str:
+    """Port of the spec's lede emphasis: quoted spans → bold-italic-indigo; repo names →
+    semibold-italic. Operates on ESCAPED text and never rewrites inside an emitted span."""
+    esc = _esc(headline)
+    quote_span = (rf'<span style="color:{_BRAND};font-weight:700;font-style:italic;">\g<0>'
+                  r'</span>')
+    esc = re.sub(r'&#8220;.{1,120}?&#8221;|“.{1,120}?”', quote_span, esc)
+    esc = re.sub(r'&quot;.{1,120}?&quot;', quote_span, esc)
+
+    names = {r.split("/")[-1] for r in context.repos_active}
+    names |= {p.repo.split("/")[-1] for p in context.waiting_prs}
+    names |= {p.repo.split("/")[-1] for p in context.shipped_prs}
+    names = sorted((n for n in names if n), key=len, reverse=True)
+
+    parts = re.split(r'(<span.*?</span>)', esc)      # only touch text outside spans
+    for i, part in enumerate(parts):
+        if part.startswith("<span"):
+            continue
+        for n in names:
+            part = re.sub(rf'\b({re.escape(_esc(n))})\b',
+                          r'<span style="font-weight:600;font-style:italic;">\1</span>',
+                          part)
+        parts[i] = part
+    return "".join(parts)
+
+
+def _label(num: str, text: str, icon: str = "") -> str:
+    """Mono section label — identical size/weight for every section (1–6): 12px / 700."""
+    lead = (f'<span style="font-size:16px;vertical-align:-1px;padding-right:8px;">{icon}</span>'
+            if icon else '')
+    return (f'<div style="font-family:{_MONO};font-size:12px;font-weight:700;color:{_BRAND};'
+            f'letter-spacing:0.06em;text-transform:uppercase;margin:0 0 16px;">'
+            f'{lead}{num}. {text}</div>')
+
+
+def _rule() -> str:
+    return (f'<div style="border-top:1px solid {_HAIR};'
+            f'height:0;line-height:0;font-size:0;">&nbsp;</div>')
 
 
 def _delta(v: int) -> str:
     if v > 0:
-        return f'<span style="color:#059669;font-size:12px;">&#8593;{v}</span>'
+        return f'<span style="font-family:{_MONO};font-size:9px;color:{_POS};">&#8593; {v}</span>'
     if v < 0:
-        return f'<span style="color:#E11D48;font-size:12px;">&#8595;{abs(v)}</span>'
-    return ""
+        return (f'<span style="font-family:{_MONO};font-size:9px;color:{_NEG};">'
+                f'&#8595; {abs(v)}</span>')
+    return f'<span style="font-family:{_MONO};font-size:9px;color:{_MUTED};">&mdash;</span>'
 
 
-def _section_header(label: str) -> str:
-    return (f'<div style="font-size:13px;font-weight:600;letter-spacing:0.12em;'
-            f'text-transform:uppercase;color:#1C1B1B;border-bottom:1px solid #EAEAEA;'
-            f'padding-bottom:10px;margin:0 0 20px;">{label}</div>')
+# ── Section 1 — AI summary + mac-window card ─────────────────────
+
+def _summary_facts(context: DigestContext) -> str:
+    """The two templated fact lines under the LLM headline — counts, never LLM prose."""
+    m = context.prs_merged
+    merged = ("No code was merged today." if m == 0
+              else f"You merged {m} pull request{'' if m == 1 else 's'} today.")
+    k = len(context.waiting_prs)
+    if k == 0:
+        attn = "Nothing needs your attention right now."
+    else:
+        attn = (f"You have {k} item{'' if k == 1 else 's'} that "
+                f"{'needs' if k == 1 else 'need'} your attention.")
+    return (f'<p style="font-family:{_SANS};font-size:14px;line-height:1.5;color:{_MUTED};'
+            f'margin:0 0 8px;">{merged}</p>'
+            f'<p style="font-family:{_SANS};font-size:14px;line-height:1.5;color:{_MUTED};'
+            f'margin:0;">{attn}</p>')
 
 
-def _waiting_rows(context: DigestContext) -> str:
-    if not context.waiting_prs:
-        return ('<p style="font-size:14px;line-height:22px;color:#585F6C;margin:0;">'
-                'Nothing needs your review — you\'re clear.</p>')
-    rows = []
-    for pr in context.waiting_prs:
-        pills = []
-        if pr.mergeable == "CONFLICTING":
-            pills.append(_pill("Conflict", "#FEF3C7", "#92400E"))
-        if pr.reason == "review_requested":
-            pills.append(_pill("Review requested", "#FFFFFF", "#5B5BD6", border="#5B5BD6"))
-        if pr.is_draft:
-            pills.append(_pill("Draft", "#DCE2F3", "#151C27"))
-        pills_html = "&nbsp;".join(pills)
-        rows.append(f"""
-        <tr><td style="padding:14px 0;border-bottom:1px solid #EAEAEA;">
-          <table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr>
-            <td valign="top" style="padding-right:12px;">
-              <div style="font-size:14px;line-height:20px;margin:0 0 5px;">
-                <span style="color:#777585;font-size:12px;">{_esc(pr.repo)}</span>
-                &nbsp;<a href="{_safe_url(pr.url)}" style="color:#1C1B1B;font-weight:500;text-decoration:none;">{_esc(pr.title)}</a>
-              </div>
-              <div style="font-size:12px;line-height:16px;color:#777585;">
-                {pr.age_days}d ago &nbsp;&nbsp; <span style="color:#059669;">+{pr.additions}</span>
-                &nbsp;<span style="color:#E11D48;">-{pr.deletions}</span>
-                &nbsp;&nbsp; {pr.changed_files} files
-              </div>
-            </td>
-            <td valign="top" align="right" style="white-space:nowrap;">{pills_html}</td>
-          </tr></table>
-        </td></tr>""")
-    return (f'<table width="100%" cellpadding="0" cellspacing="0" role="presentation">'
-            f'{"".join(rows)}</table>')
+def _mac_card(context: DigestContext) -> str:
+    """Light 'inbox preview' panel — white card / dark text, an app screenshot on the sheet."""
+    if context.waiting_prs:
+        pr = context.waiting_prs[0]
+        conflict = (f'<td align="right" valign="top" style="white-space:nowrap;padding-left:8px;">'
+                    f'<span style="display:inline-block;padding:1px 4px;border-radius:2px;'
+                    f'border:1px solid {_STREAK};font-family:{_MONO};font-size:7px;'
+                    f'letter-spacing:0.05em;color:{_STREAK};">CONFLICT</span></td>'
+                    if pr.mergeable == "CONFLICTING" else '<td></td>')
+        body = (
+            f'<div style="border-bottom:1px solid {_HAIR};padding:8px 0 12px;">'
+            f'<table width="100%" role="presentation" cellpadding="0" cellspacing="0"><tr>'
+            f'<td valign="top" style="font-family:{_MONO};font-size:10px;font-weight:500;'
+            f'color:{_INK};">{_esc(pr.repo)} #{pr.number}</td>{conflict}</tr></table>'
+            f'<p style="font-family:{_SANS};font-size:11px;font-weight:500;color:{_INK};'
+            f'margin:4px 0;"><a href="{_safe_url(pr.url)}" style="color:{_INK};'
+            f'text-decoration:none;font-weight:500;">{_esc(pr.title)}</a></p>'
+            f'<div style="font-family:{_MONO};font-size:8px;">'
+            f'<span style="color:{_POS};">+{pr.additions}</span>&nbsp;&nbsp;'
+            f'<span style="color:{_NEG};">-{pr.deletions}</span>&nbsp;&nbsp;'
+            f'<span style="color:{_MUTED};">{pr.changed_files} files</span></div>'
+            f'</div>')
+    else:
+        body = (f'<p style="font-family:{_SANS};font-size:11px;color:{_MUTED};margin:4px 0;">'
+                f'Inbox zero — nothing waiting.</p>')
+
+    return f"""
+    <div style="background-color:{_CARD_BG};border:1px solid {_HAIR};border-radius:12px;overflow:hidden;">
+      <div style="padding:8px 16px;border-bottom:1px solid {_HAIR};">
+        <table width="100%" role="presentation" cellpadding="0" cellspacing="0"><tr>
+          <td style="font-size:0;line-height:0;">
+            <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background-color:#FF5F56;"></span>
+            <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background-color:#FFBD2E;margin-left:6px;"></span>
+            <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background-color:#27C93F;margin-left:6px;"></span>
+          </td>
+          <td align="right" style="font-family:{_MONO};font-size:8px;letter-spacing:0.1em;color:{_MUTED};">INBOX &middot; 8:00 AM</td>
+        </tr></table>
+      </div>
+      <div style="padding:16px;">
+        <div style="font-family:{_MONO};font-size:8px;color:{_MUTED};">DEVPULSE &middot; ISSUE 001</div>
+        <div style="font-family:{_MONO};font-size:9px;color:{_MUTED};margin:16px 0 0;">{_ICON_BOLT}&nbsp;WAITING ON YOU</div>
+        {body}
+      </div>
+    </div>"""
 
 
-def _stat(label: str, value: int, delta_key: str, context: DigestContext) -> str:
-    d = _delta(context.deltas.get(delta_key, 0)) if delta_key else ""
-    return (f'<td style="padding:0 8px;vertical-align:top;">'
-            f'<div style="font-size:12px;color:#585F6C;margin:0 0 2px;">{label}</div>'
-            f'<div style="font-size:24px;font-weight:300;color:#1C1B1B;">{value} {d}</div></td>')
+def _section_summary(digest: DigestResult, context: DigestContext) -> str:
+    headline = _emphasize_headline(digest.headline, context)
+    return f"""
+    <table width="100%" role="presentation" cellpadding="0" cellspacing="0"><tr>
+      <td valign="top" width="56%" style="padding-right:24px;">
+        {_label("1", "AI Summary", _ICON_AI).replace('margin:0 0 16px', 'margin:0 0 24px')}
+        <p style="font-family:{_SANS};font-size:22px;line-height:1.25;font-weight:400;color:{_INK};margin:0 0 24px;">{headline}</p>
+        {_summary_facts(context)}
+      </td>
+      <td valign="top" width="44%">{_mac_card(context)}</td>
+    </tr></table>"""
 
 
-def _repo_chips(context: DigestContext) -> str:
-    chips = "".join(
-        f'<span style="display:inline-block;margin:0 6px 6px 0;padding:5px 12px;'
-        f'border:1px solid #EAEAEA;border-radius:6px;background:#FCF9F8;font-size:13px;'
-        f'color:#1C1B1B;">{_esc(r)}</span>' for r in context.repos_active)
-    return chips or '<span style="font-size:13px;color:#585F6C;">No repositories touched.</span>'
+# ── Section 2 — Shipped today ────────────────────────────────────
+
+def _section_shipped(context: DigestContext) -> str:
+    if context.shipped_prs:
+        rows = "".join(
+            f'<p style="margin:0 0 10px;font-family:{_SANS};font-size:15px;">'
+            f'<a href="{_safe_url(p.url)}" style="color:{_INK};text-decoration:none;font-weight:700;">'
+            f'PR #{p.number} &mdash; {_esc(p.title)}</a>'
+            f'<span style="font-family:{_MONO};font-size:11px;color:{_MUTED};">&nbsp;&nbsp;{_esc(p.repo)}</span></p>'
+            for p in context.shipped_prs)
+        content = rows
+    else:
+        content = (f'<p style="font-family:{_SANS};font-size:14px;line-height:1.5;'
+                   f'color:{_MUTED};margin:0;">No code shipped today.</p>')
+    return (f'{_label("2", "Shipped Today")}{_rule()}'
+            f'<div style="padding-top:16px;">{content}</div>')
+
+
+# ── Sections 3 + 4 — Work in progress · Needs attention ──────────
+
+def _section_wip(context: DigestContext) -> str:
+    authored = [p for p in context.waiting_prs if p.reason == "yours"]
+    if authored:
+        blocks = []
+        for p in authored:
+            opened = "Opened today" if p.age_days == 0 else f"Opened {p.age_days}d ago"
+            blocks.append(
+                f'<p style="font-family:{_MONO};font-size:10px;font-weight:500;color:{_MUTED};'
+                f'letter-spacing:0.05em;margin:0 0 4px;">{_esc(p.repo)}</p>'
+                f'<table width="100%" role="presentation" cellpadding="0" cellspacing="0"><tr>'
+                f'<td valign="middle"><a href="{_safe_url(p.url)}" '
+                f'style="font-family:{_SANS};font-size:15px;font-weight:700;color:{_INK};text-decoration:none;">'
+                f'PR #{p.number} &mdash; {_esc(p.title)}</a></td>'
+                f'<td valign="middle" align="right" style="white-space:nowrap;padding-left:8px;">'
+                f'<span style="display:inline-block;padding:2px 8px;border-radius:999px;'
+                f'border:1px solid {_POS};color:{_POS};font-family:{_MONO};'
+                f'font-size:9px;font-weight:500;letter-spacing:0.05em;">OPEN</span></td>'
+                f'</tr></table>'
+                f'<p style="font-family:{_SANS};font-size:12px;color:{_MUTED};margin:4px 0 0;">{opened}</p>'
+                f'<div style="font-family:{_MONO};font-size:11px;font-weight:500;margin-top:8px;">'
+                f'<span style="color:{_POS};">+{p.additions}</span>&nbsp;&nbsp;'
+                f'<span style="color:{_NEG};">-{p.deletions}</span>&nbsp;&nbsp;'
+                f'<span style="color:{_MUTED};">{p.changed_files} files</span></div>')
+        content = '<div style="margin-bottom:16px;">' + \
+                  '</div><div style="margin-bottom:16px;">'.join(blocks) + '</div>'
+    else:
+        content = (f'<p style="font-family:{_SANS};font-size:14px;color:{_MUTED};margin:0;">'
+                   f'No open work in progress.</p>')
+    return (f'{_label("3", "Work In Progress", _ICON_CODE)}{_rule()}'
+            f'<div style="padding-top:16px;">{content}</div>')
+
+
+def _attention_status(pr) -> str:
+    if pr.mergeable == "CONFLICTING":
+        return "Merge conflict"
+    if pr.is_draft:
+        return "Draft — not ready"
+    if pr.reason == "review_requested":
+        return "Review requested"
+    return "Awaiting review"
+
+
+def _section_attention(context: DigestContext) -> str:
+    if context.waiting_prs:
+        bullets = []
+        for p in context.waiting_prs:
+            kind = "PR" if not str(p.title).lower().startswith("issue") else "Issue"
+            bullets.append(
+                f'<table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:24px;"><tr>'
+                f'<td valign="top" style="padding-right:12px;padding-top:5px;">'
+                f'<span style="display:inline-block;width:8px;height:8px;border-radius:50%;'
+                f'background-color:{_BRAND};font-size:0;line-height:0;">&nbsp;</span></td>'
+                f'<td valign="top">'
+                f'<p style="font-family:{_SANS};font-size:14px;font-weight:700;color:{_INK};margin:0;line-height:1.4;">'
+                f'<a href="{_safe_url(p.url)}" style="color:{_INK};text-decoration:none;font-weight:700;">{kind} #{p.number} in {_esc(p.repo)}</a></p>'
+                f'<p style="font-family:{_SANS};font-size:12px;color:{_MUTED};margin:0;line-height:1.5;">{_attention_status(p)}</p>'
+                f'</td></tr></table>')
+        content = "".join(bullets)
+    else:
+        content = (f'<p style="font-family:{_SANS};font-size:14px;color:{_MUTED};margin:0;">'
+                   f"You're all clear.</p>")
+    return (f'{_label("4", "Needs Attention", _ICON_ATTN)}{_rule()}'
+            f'<div style="padding-top:16px;">{content}</div>')
+
+
+def _section_wip_attention(context: DigestContext) -> str:
+    return f"""
+    <table width="100%" role="presentation" cellpadding="0" cellspacing="0"><tr>
+      <td valign="top" width="50%" style="padding-right:28px;">{_section_wip(context)}</td>
+      <td valign="top" width="50%" style="border-left:1px solid {_HAIR};padding-left:28px;">{_section_attention(context)}</td>
+    </tr></table>"""
+
+
+# ── Section 5 — Today's work (commit-headline log) ───────────────
+
+def _log_glyph(headline: str) -> str:
+    """Mono glyph for the chip, derived from what the row describes."""
+    h = str(headline).lower()
+    if h.startswith("opened pr"):
+        return "#"
+    if h.startswith(("refactor", "rework", "rewrote")):
+        return "~"
+    return "+"
+
+
+def _section_work_log(context: DigestContext) -> str:
+    if context.work_log:
+        items = []
+        for w in context.work_log:
+            sub = f"{_esc(w.repo)} &middot; {w.commits} commit{'' if w.commits == 1 else 's'}"
+            items.append(
+                f'<table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:24px;"><tr>'
+                f'<td valign="middle" style="padding-right:24px;">'
+                f'<div style="width:32px;height:32px;background-color:{_CHIP_BG};'
+                f'border:1px solid {_HAIR};border-radius:4px;text-align:center;line-height:32px;'
+                f'font-family:{_MONO};font-size:13px;color:{_MUTED};">{_log_glyph(w.headline)}</div></td>'
+                f'<td valign="middle">'
+                f'<p style="font-family:{_SANS};font-size:14px;font-weight:700;color:{_INK};margin:0;line-height:1.4;">{_esc(w.headline)}</p>'
+                f'<p style="font-family:{_SANS};font-size:11px;color:{_MUTED};margin:1px 0 0;">{sub}</p>'
+                f'</td></tr></table>')
+        content = "".join(items)
+    else:
+        content = (f'<p style="font-family:{_SANS};font-size:14px;color:{_MUTED};margin:0;">'
+                   f'No commits recorded in this period.</p>')
+    return f'{_label("5", "Today\'s Work")}{_rule()}<div style="padding-top:24px;">{content}</div>'
+
+
+# ── Section 6 — Last 7 days (stat strip) ─────────────────────────
+
+def _stat(label: str, value, delta_key: str, context: DigestContext,
+          value_color: str = _INK) -> str:
+    # Show a delta chip ONLY when there's a real move; no key or a flat 0 → nothing (no dash).
+    v = context.deltas.get(delta_key, 0) if delta_key else 0
+    delta = f'<div style="margin-top:8px;">{_delta(v)}</div>' if v else ''
+    return (f'<td align="center" valign="top" width="16.66%" style="padding:0 4px;">'
+            f'<div style="font-family:{_NUM};font-size:28px;font-weight:700;color:{value_color};line-height:1.2;margin-bottom:4px;">{value}</div>'
+            f'<div style="font-family:{_MONO};font-size:8px;font-weight:500;color:{_MUTED};letter-spacing:0.05em;">{label}</div>'
+            f'{delta}</td>')
+
+
+def _section_stats(context: DigestContext) -> str:
+    # Streak is the accent column: orange numeral + full orange label. No delta (redundant).
+    streak_label = f'<span style="color:{_STREAK};">DAY STREAK</span>'
+    strip = (
+        f'<table width="100%" role="presentation" cellpadding="0" cellspacing="0" style="table-layout:fixed;"><tr>'
+        f'{_stat("PRS OPENED", context.prs_opened, "prs_opened", context)}'
+        f'{_stat("PRS MERGED", context.prs_merged, "prs_merged", context)}'
+        f'{_stat("REVIEWS GIVEN", context.reviews, "reviews", context)}'
+        f'{_stat("ISSUES OPENED", context.issues_opened, "issues_opened", context)}'
+        f'{_stat("REPOS ACTIVE", len(context.repos_active), "", context)}'
+        f'{_stat(streak_label, context.streak_days, "", context, value_color=_STREAK)}'
+        f'</tr></table>')
+    return f'{_label("6", "Last 7 Days")}{_rule()}<div style="padding-top:32px;">{strip}</div>'
+
+
+# ── Footer ───────────────────────────────────────────────────────
+
+def _footer() -> str:
+    dash = _safe_url(f"{settings.frontend_url}/dashboard")
+    return f"""
+    {_rule()}
+    <table width="100%" role="presentation" cellpadding="0" cellspacing="0" style="margin-top:32px;"><tr>
+      <td valign="top" width="55%">
+        <p style="font-family:{_SANS};font-size:13px;font-weight:700;font-style:italic;color:{_BRAND};margin:0;">Private by design.</p>
+        <p style="font-family:{_SANS};font-size:11px;line-height:1.5;color:{_MUTED};margin:4px 0 0;max-width:220px;">We read GitHub that you approve. Your code never leaves your repos.</p>
+      </td>
+      <td valign="top" align="right" width="45%">
+        <p style="font-family:{_SANS};font-size:12px;font-weight:500;color:{_INK};margin:0 0 4px;">Manage frequency and repositories &rarr;</p>
+        <a href="{dash}" style="font-family:{_SANS};font-size:12px;font-weight:500;color:{_BRAND};text-decoration:none;">Open DevPulse Dashboard</a>
+      </td>
+    </tr></table>
+    <p style="font-family:{_MONO};font-size:9px;font-weight:500;color:{_MUTED};letter-spacing:0.1em;text-transform:uppercase;text-align:center;margin:32px 0 0;">
+      You're receiving this because you subscribed to DevPulse. &middot; <a href="{dash}" style="color:{_MUTED};text-decoration:underline;">Unsubscribe</a> &middot; DevPulse &copy; 2026
+    </p>"""
 
 
 def _build_digest_html(digest: DigestResult, context: DigestContext,
                        period_start: str, period_end: str) -> str:
-    m_bg, m_fg = _MOMENTUM.get(digest.momentum, _MOMENTUM["steady"])
-    momentum_pill = _pill(digest.momentum.upper(), m_bg, m_fg)
-    stats = (
-        f'<table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr>'
-        f'{_stat("Commits", context.commits, "commits", context)}'
-        f'{_stat("PRs opened", context.prs_opened, "prs_opened", context)}'
-        f'{_stat("PRs merged", context.prs_merged, "", context)}'
-        f'{_stat("Issues", context.issues_opened, "issues_opened", context)}'
-        f'{_stat("Reviews", context.reviews, "reviews", context)}'
-        f'</tr></table>'
-    )
-    streak = (f'<div style="margin-top:16px;display:inline-block;background:#FFF7ED;'
-              f'border:1px solid #FFEDD5;border-radius:9999px;padding:4px 12px;font-size:13px;'
-              f'color:#9A3412;font-weight:600;">&#128293; {context.streak_days}-day streak</div>')
+    masthead = f"""
+    <table width="100%" role="presentation" cellpadding="0" cellspacing="0">
+      <tr>
+        <td valign="bottom">
+          <div style="font-family:{_SERIF};font-size:32px;font-weight:700;color:{_INK};letter-spacing:-0.02em;line-height:1;">DEVPULSE</div>
+        </td>
+        <td valign="bottom" align="right" style="white-space:nowrap;">
+          <div style="font-family:{_MONO};font-size:12px;font-weight:500;color:{_INK};letter-spacing:0.1em;">ISSUE 001 &middot; DAILY BRIEF</div>
+        </td>
+      </tr>
+      <tr>
+        <td valign="top" style="padding-top:4px;">
+          <div style="font-family:{_MONO};font-size:9px;font-weight:500;color:{_MUTED};letter-spacing:0.05em;white-space:nowrap;">A DEVELOPER'S DAILY BRIEF</div>
+          <div style="font-family:{_MONO};font-size:9px;font-weight:500;color:{_MUTED};letter-spacing:0.05em;white-space:nowrap;margin-top:2px;">BUILT ON YOUR GITHUB</div>
+        </td>
+        <td valign="top" align="right" style="padding-top:4px;white-space:nowrap;">
+          <div style="font-family:{_MONO};font-size:10px;font-weight:500;color:{_MUTED};letter-spacing:0.05em;">{_fmt_date(period_end)} &middot; 8:00 AM</div>
+        </td>
+      </tr>
+    </table>"""
 
-    body = f"""<div style="background:#F5F5F4;padding:32px 12px;font-family:{_FONT};">
-  <table width="600" cellpadding="0" cellspacing="0" role="presentation" align="center" style="max-width:600px;margin:0 auto;background:#F5F5F4;">
-    <tr><td style="padding:8px 4px 16px;">
-      <table width="100%" role="presentation"><tr>
-        <td style="font-size:15px;font-weight:700;color:#5B5BD6;">DevPulse</td>
-        <td align="right" style="font-size:12px;color:#464553;">{period_start} – {period_end}&nbsp;&nbsp;{momentum_pill}</td>
-      </tr></table>
-    </td></tr>
-    <tr><td style="background:#FFFFFF;border:1px solid #EAEAEA;border-radius:12px;padding:40px;box-shadow:0 4px 12px rgba(0,0,0,0.03);">
-      <p style="font-size:15px;line-height:24px;color:#1C1B1B;margin:0 0 40px;">{_esc(digest.headline)}</p>
-
-      <div style="margin-bottom:40px;">
-        {_section_header("&#9889; Waiting on you")}
-        {_waiting_rows(context)}
+    gap = '<div style="height:48px;line-height:48px;font-size:0;">&nbsp;</div>'
+    body = f"""
+  <table width="640" role="presentation" cellpadding="0" cellspacing="0" align="center"
+         bgcolor="{_BG}" style="max-width:640px;margin:0 auto;background-color:{_BG};">
+    <tr><td style="padding:0;">
+      <div style="border:1px solid {_EDGE};box-shadow:0 1px 2px rgba(0,0,0,0.06),0 14px 40px rgba(0,0,0,0.12);">
+      <div style="padding:32px 32px 16px;">{masthead}</div>
+      <div style="margin:0 32px;">{_rule()}</div>
+      <div style="padding:40px 32px;">
+      {_section_summary(digest, context)}{gap}
+      {_section_shipped(context)}{gap}
+      {_section_wip_attention(context)}{gap}
+      {_section_work_log(context)}{gap}
+      {_section_stats(context)}
       </div>
-
-      <div style="margin-bottom:40px;">
-        {_section_header("&#128202; Your activity")}
-        {stats}
-        {streak}
+      <div style="padding:0 32px 48px;">
+      {_footer()}
       </div>
-
-      <div>
-        {_section_header("&#128230; Active repositories")}
-        {_repo_chips(context)}
       </div>
     </td></tr>
-    <tr><td style="padding:32px 4px;text-align:center;font-size:12px;line-height:18px;color:#777585;">
-      <a href="{settings.frontend_url}/settings" style="color:#4241BC;text-decoration:underline;">Manage digest settings</a><br/>
-      Generated {period_end} · DevPulse
-    </td></tr>
-  </table>
-</div>"""
+  </table>"""
 
-    # Full document + color-scheme lock so dark-mode clients can't invert the fixed light theme.
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="color-scheme" content="light only">
-<meta name="supported-color-schemes" content="light only">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600;1,700&family=Playfair+Display:wght@700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-  :root {{ color-scheme: light only; supported-color-schemes: light only; }}
-  body {{ margin:0; padding:0; background:#F5F5F4; -webkit-text-size-adjust:100%; font-family:{_FONT}; }}
+  :root {{ color-scheme: light; supported-color-schemes: light; }}
+  body {{ margin:0; padding:0; -webkit-text-size-adjust:100%; background:{_BG}; }}
 </style>
 </head>
-<body style="margin:0;padding:0;background:#F5F5F4;">
+<body bgcolor="{_BG}" style="margin:0;padding:40px 16px;background-color:{_BG};">
 {body}
 </body>
 </html>"""
