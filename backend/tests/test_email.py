@@ -1,5 +1,5 @@
 from app.schemas import DigestResult, DigestContext, WaitingPR, ShippedPR, WorkItem
-from app.services.email import _build_digest_html
+from app.services.email import _build_digest_html, _delivery_date
 
 CTX = DigestContext(
     github_username="me", period_start="2026-07-01", period_end="2026-07-02",
@@ -32,7 +32,7 @@ def test_html_contains_facts_and_sections():
     assert '<span style="color:#EA580C;">DAY STREAK</span>' in html   # full streak label is orange
     assert "RISING" not in html                       # momentum/RISING badge dropped (Stitch spec)
     assert ">REVIEW</span>" not in html               # mac card carries only the CONFLICT pill
-    assert "JUL 02, 2026" in html                     # broadsheet date format
+    assert _delivery_date() in html                   # masthead dateline = today's delivery date
     assert "+120" in html
     assert "14 files" in html
     assert 'href="https://x/7"' in html                # PR mentions (card/attention) are links
