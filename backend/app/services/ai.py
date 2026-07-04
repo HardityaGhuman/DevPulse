@@ -15,7 +15,7 @@ from app.schemas import DigestContext, DigestResult
 logger = logging.getLogger("devpulse.ai")
 
 # Ordered: primary first, fallback(s) after. Any LiteLLM-supported model id works.
-_MODELS = ["gemini/gemini-2.5-flash", "groq/llama-3.3-70b-versatile"]
+_MODELS = ["gemini/gemini-2.5-flash", "groq/openai/gpt-oss-120b"]  
 
 # ── PTCF prompt ────────────────────────────────────────────────
 _PERSONA = ("You are a senior developer coach reviewing a peer's week of GitHub activity. "
