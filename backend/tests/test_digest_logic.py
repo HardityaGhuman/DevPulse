@@ -49,3 +49,32 @@ def test_settings_rejects_bad_frequency():
     DigestSettingsRequest(digest_frequency="weekly")  # ok
     with pytest.raises(ValidationError):
         DigestSettingsRequest(digest_frequency="3h")
+
+
+@pytest.mark.asyncio
+async def test_build_context_populates_shipped_work_log_and_merged(monkeypatch):
+    async def _contrib(*a, **k):
+        return {"commits": 5, "prs_opened": 2, "prs_merged": 0, "issues_opened": 1,
+                "reviews": 3, "repos_active": ["me/aria"], "streak_days": 8,
+                "total_events": 11}
+    async def _waiting(*a, **k):
+        return []
+    async def _merged(*a, **k):
+        return {"count": 6, "prs": [{"repo": "me/aria", "number": 21,
+                                     "title": "Memory Persistence", "url": "https://x/21"}]}
+    async def _worklog(*a, **k):
+        return [{"repo": "me/aria", "headline": "Added memory adapter", "commits": 2}]
+
+    monkeypatch.setattr(d.github, "fetch_contributions", _contrib)
+    monkeypatch.setattr(d.github, "fetch_waiting_prs", _waiting)
+    monkeypatch.setattr(d.github, "fetch_merged_prs", _merged)
+    monkeypatch.setattr(d.github, "fetch_work_log", _worklog)
+    monkeypatch.setattr(d, "_previous_counts", lambda uid: {"prs_merged": 2})
+
+    user = {"id": "u1", "github_username": "me", "github_access_token": "tok"}
+    ctx = await d.build_context(user, "2026-07-02T00:00:00+00:00",
+                                "2026-07-02T12:00:00+00:00")
+    assert ctx.prs_merged == 6                       # from search, not the contrib 0
+    assert ctx.shipped_prs[0].number == 21
+    assert ctx.work_log[0].headline == "Added memory adapter"
+    assert ctx.deltas["prs_merged"] == 4             # 6 - previous 2

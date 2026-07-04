@@ -22,6 +22,21 @@ class WaitingPR(BaseModel):
     reason: str = "yours"             # "review_requested" | "yours"
 
 
+class ShippedPR(BaseModel):
+    """A PR the user merged in the window — the "Shipped Today" section."""
+    repo: str
+    number: int
+    title: str
+    url: str
+
+
+class WorkItem(BaseModel):
+    """A grouped commit headline — the "Today's Work" log. Author's own words, not LLM prose."""
+    repo: str
+    headline: str
+    commits: int = 1
+
+
 class DigestContext(BaseModel):
     """The full, deterministic input handed to the LLM (PTCF 'Context')."""
     github_username: str
@@ -35,6 +50,8 @@ class DigestContext(BaseModel):
     repos_active: list[str]
     streak_days: int
     waiting_prs: list[WaitingPR] = []
+    shipped_prs: list[ShippedPR] = []
+    work_log: list[WorkItem] = []
     deltas: dict[str, int] = {}          # e.g. {"commits": 4, "prs_opened": -1}
 
 
