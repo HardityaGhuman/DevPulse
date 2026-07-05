@@ -227,7 +227,7 @@ def _section_shipped(context: DigestContext) -> str:
     if context.shipped_prs:
         rows = "".join(
             f'<p style="margin:0 0 10px;font-family:{_SANS};font-size:15px;">'
-            f'<a href="{_safe_url(p.url)}" style="color:{_INK};text-decoration:none;font-weight:700;">'
+            f'<a href="{_safe_url(p.url)}" style="font-family:{_SERIF};color:{_INK};text-decoration:none;font-weight:700;">'
             f'PR #{p.number} &mdash; {_esc(p.title)}</a>'
             f'<span style="font-family:{_MONO};font-size:11px;color:{_MUTED};">&nbsp;&nbsp;{_esc(p.repo)}</span></p>'
             for p in context.shipped_prs)
@@ -252,7 +252,7 @@ def _section_wip(context: DigestContext) -> str:
                 f'letter-spacing:0.05em;margin:0 0 4px;">{_esc(p.repo)}</p>'
                 f'<table width="100%" role="presentation" cellpadding="0" cellspacing="0"><tr>'
                 f'<td valign="middle"><a href="{_safe_url(p.url)}" '
-                f'style="font-family:{_SANS};font-size:15px;font-weight:700;color:{_INK};text-decoration:none;">'
+                f'style="font-family:{_SERIF};font-size:16px;font-weight:700;color:{_INK};text-decoration:none;">'
                 f'PR #{p.number} &mdash; {_esc(p.title)}</a></td>'
                 f'<td valign="middle" align="right" style="white-space:nowrap;padding-left:8px;">'
                 f'<span style="display:inline-block;padding:2px 8px;border-radius:999px;'
@@ -295,7 +295,7 @@ def _section_attention(context: DigestContext) -> str:
                 f'background-color:{_BRAND};font-size:0;line-height:0;">&nbsp;</span></td>'
                 f'<td valign="top">'
                 f'<p style="font-family:{_SANS};font-size:14px;font-weight:700;color:{_INK};margin:0;line-height:1.4;">'
-                f'<a href="{_safe_url(p.url)}" style="color:{_INK};text-decoration:none;font-weight:700;">{kind} #{p.number} in {_esc(p.repo)}</a></p>'
+                f'<a href="{_safe_url(p.url)}" style="font-family:{_SERIF};color:{_INK};text-decoration:none;font-weight:700;">{kind} #{p.number} in {_esc(p.repo)}</a></p>'
                 f'<p style="font-family:{_SANS};font-size:12px;color:{_MUTED};margin:0;line-height:1.5;">{_attention_status(p)}</p>'
                 f'</td></tr></table>')
         content = "".join(bullets)
@@ -338,7 +338,7 @@ def _section_work_log(context: DigestContext) -> str:
                 f'border:1px solid {_HAIR};border-radius:4px;text-align:center;line-height:32px;'
                 f'font-family:{_MONO};font-size:13px;color:{_MUTED};">{_log_glyph(w.headline)}</div></td>'
                 f'<td valign="middle">'
-                f'<p style="font-family:{_SANS};font-size:14px;font-weight:700;color:{_INK};margin:0;line-height:1.4;">{_esc(w.headline)}</p>'
+                f'<p style="font-family:{_SERIF};font-size:16px;font-weight:700;color:{_INK};margin:0;line-height:1.4;">{_esc(w.headline)}</p>'
                 f'<p style="font-family:{_SANS};font-size:11px;color:{_MUTED};margin:1px 0 0;">{sub}</p>'
                 f'</td></tr></table>')
         content = "".join(items)
@@ -384,7 +384,7 @@ def _footer() -> str:
     {_rule()}
     <table width="100%" role="presentation" cellpadding="0" cellspacing="0" style="margin-top:32px;"><tr>
       <td valign="top" width="55%">
-        <p style="font-family:{_SANS};font-size:13px;font-weight:700;font-style:italic;color:{_BRAND};margin:0;">Private by design.</p>
+        <p style="font-family:{_SERIF};font-size:15px;font-weight:700;font-style:italic;color:{_BRAND};margin:0;">Private by design.</p>
         <p style="font-family:{_SANS};font-size:11px;line-height:1.5;color:{_MUTED};margin:4px 0 0;max-width:220px;">We read GitHub that you approve. Your code never leaves your repos.</p>
       </td>
       <td valign="top" align="right" width="45%">
