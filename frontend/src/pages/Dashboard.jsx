@@ -18,7 +18,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { UserButton } from "@clerk/clerk-react";
+import { UserButton, useClerk } from "@clerk/clerk-react";
 import { Lock } from "lucide-react";
 import api from "@/lib/api";
 import DigestSample from "@/components/DigestSample";
@@ -106,6 +106,7 @@ function headlineOf(aiSummary) {
 }
 
 export default function Dashboard() {
+  const { signOut } = useClerk();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -219,7 +220,12 @@ export default function Dashboard() {
           <Link to="/" className="serif" style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em" }}>
             DEVPULSE
           </Link>
-          <UserButton afterSignOutUrl="/" />
+          <div className="flex items-center gap-4">
+            <button onClick={() => signOut({ redirectUrl: "/" })} className="btn-dark px-6 py-3">
+              Log out
+            </button>
+            <UserButton afterSignOutUrl="/" />
+          </div>
         </div>
       </div>
 

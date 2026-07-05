@@ -4,7 +4,7 @@
   All feature copy is grounded in what the backend actually produces.
 */
 
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, Navigate } from "react-router-dom";
 import { useAuth, SignInButton, SignUpButton } from "@clerk/clerk-react";
 import { motion } from "framer-motion";
 import DigestSample from "@/components/DigestSample";
@@ -26,7 +26,7 @@ function Reveal({ children, delay = 0, className = "" }) {
   );
 }
 
-function SignInPill({ className = "" }) {
+function SignInPill({ className = "", label = "Sign in with GitHub" }) {
   const { isSignedIn } = useAuth();
   const navigate = useNavigate();
   if (isSignedIn) {
@@ -38,7 +38,7 @@ function SignInPill({ className = "" }) {
   }
   return (
     <SignInButton mode="modal" forceRedirectUrl="/dashboard">
-      <button className={`btn-dark px-6 py-3 ${className}`}>Sign in with GitHub</button>
+      <button className={`btn-dark px-6 py-3 ${className}`}>{label}</button>
     </SignInButton>
   );
 }
@@ -116,6 +116,12 @@ function MiniCard({ children }) {
 }
 
 export default function LandingPage() {
+  const { isLoaded, isSignedIn } = useAuth();
+
+  // Signed-in users skip the marketing page and land straight on their dashboard.
+  // Wait for Clerk to load first so we don't flash the landing then redirect.
+  if (isLoaded && isSignedIn) return <Navigate to="/dashboard" replace />;
+
   return (
     <div style={{ background: "var(--color-page)" }}>
       {/* masthead */}
@@ -256,7 +262,7 @@ export default function LandingPage() {
             <h2 className="serif italic" style={{ fontSize: 64, fontWeight: 700, color: "var(--color-accent)", margin: "0 0 32px" }}>
               Start your brief.
             </h2>
-            <SignInPill className="px-8 py-4" />
+            <SignInPill className="px-8 py-4" label="Get started" />
           </Reveal>
         </div>
       </section>
