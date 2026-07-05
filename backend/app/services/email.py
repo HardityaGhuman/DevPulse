@@ -31,11 +31,27 @@ import html
 import logging
 import re
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import resend
 from app.config import settings
 from app.schemas import DigestResult, DigestContext
 
 logger = logging.getLogger("devpulse.email")
+
+# Delivery-time display. The digest can go out at any interval (6h/12h/daily/weekly), so the
+# masthead + mac-card clock show the ACTUAL send time, not a fixed 8:00. IST = the tool owner's tz.
+_TZ = ZoneInfo("Asia/Kolkata")
+
+
+def _delivery_time() -> str:
+    """Current wall-clock at render (= send time), e.g. '2:35 PM'."""
+    return datetime.now(_TZ).strftime("%-I:%M %p")
+
+
+def _delivery_date() -> str:
+    """Today's date at send, e.g. 'JUL 04, 2026' — the masthead dateline (a publication date,
+    not the digest's period boundary, so it stays in step with _delivery_time)."""
+    return datetime.now(_TZ).strftime("%b %d, %Y").upper()
 
 
 def _esc(text: str) -> str:
@@ -47,16 +63,6 @@ def _safe_url(url: str) -> str:
     """Only allow http(s) links in hrefs; escape for attribute context."""
     u = str(url)
     return html.escape(u, quote=True) if u.startswith(("http://", "https://")) else "#"
-
-
-def _fmt_date(value: str) -> str:
-    """Broadsheet date: 'JUL 03, 2026'. Falls back to the raw string if it won't parse."""
-    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S%z"):
-        try:
-            return datetime.strptime(str(value), fmt).strftime("%b %d, %Y").upper()
-        except (ValueError, TypeError):
-            continue
-    return _esc(value)
 
 
 # NOTE: single quotes only — these land inside style="…" attributes, a double quote
@@ -180,7 +186,7 @@ def _mac_card(context: DigestContext) -> str:
             f'</div>')
     else:
         body = (f'<p style="font-family:{_SANS};font-size:11px;color:{_MUTED};margin:4px 0;">'
-                f'Inbox zero — nothing waiting.</p>')
+                f"You're all caught up.</p>")
 
     return f"""
     <div style="background-color:{_CARD_BG};border:1px solid {_HAIR};border-radius:12px;overflow:hidden;">
@@ -191,7 +197,7 @@ def _mac_card(context: DigestContext) -> str:
             <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background-color:#FFBD2E;margin-left:6px;"></span>
             <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background-color:#27C93F;margin-left:6px;"></span>
           </td>
-          <td align="right" style="font-family:{_MONO};font-size:8px;letter-spacing:0.1em;color:{_MUTED};">INBOX &middot; 8:00 AM</td>
+          <td align="right" style="font-family:{_MONO};font-size:8px;letter-spacing:0.1em;color:{_MUTED};">INBOX &middot; {_delivery_time()}</td>
         </tr></table>
       </div>
       <div style="padding:16px;">
@@ -221,7 +227,7 @@ def _section_shipped(context: DigestContext) -> str:
     if context.shipped_prs:
         rows = "".join(
             f'<p style="margin:0 0 10px;font-family:{_SANS};font-size:15px;">'
-            f'<a href="{_safe_url(p.url)}" style="color:{_INK};text-decoration:none;font-weight:700;">'
+            f'<a href="{_safe_url(p.url)}" style="font-family:{_SERIF};color:{_INK};text-decoration:none;font-weight:700;">'
             f'PR #{p.number} &mdash; {_esc(p.title)}</a>'
             f'<span style="font-family:{_MONO};font-size:11px;color:{_MUTED};">&nbsp;&nbsp;{_esc(p.repo)}</span></p>'
             for p in context.shipped_prs)
@@ -246,7 +252,7 @@ def _section_wip(context: DigestContext) -> str:
                 f'letter-spacing:0.05em;margin:0 0 4px;">{_esc(p.repo)}</p>'
                 f'<table width="100%" role="presentation" cellpadding="0" cellspacing="0"><tr>'
                 f'<td valign="middle"><a href="{_safe_url(p.url)}" '
-                f'style="font-family:{_SANS};font-size:15px;font-weight:700;color:{_INK};text-decoration:none;">'
+                f'style="font-family:{_SERIF};font-size:16px;font-weight:700;color:{_INK};text-decoration:none;">'
                 f'PR #{p.number} &mdash; {_esc(p.title)}</a></td>'
                 f'<td valign="middle" align="right" style="white-space:nowrap;padding-left:8px;">'
                 f'<span style="display:inline-block;padding:2px 8px;border-radius:999px;'
@@ -289,7 +295,7 @@ def _section_attention(context: DigestContext) -> str:
                 f'background-color:{_BRAND};font-size:0;line-height:0;">&nbsp;</span></td>'
                 f'<td valign="top">'
                 f'<p style="font-family:{_SANS};font-size:14px;font-weight:700;color:{_INK};margin:0;line-height:1.4;">'
-                f'<a href="{_safe_url(p.url)}" style="color:{_INK};text-decoration:none;font-weight:700;">{kind} #{p.number} in {_esc(p.repo)}</a></p>'
+                f'<a href="{_safe_url(p.url)}" style="font-family:{_SERIF};color:{_INK};text-decoration:none;font-weight:700;">{kind} #{p.number} in {_esc(p.repo)}</a></p>'
                 f'<p style="font-family:{_SANS};font-size:12px;color:{_MUTED};margin:0;line-height:1.5;">{_attention_status(p)}</p>'
                 f'</td></tr></table>')
         content = "".join(bullets)
@@ -332,7 +338,7 @@ def _section_work_log(context: DigestContext) -> str:
                 f'border:1px solid {_HAIR};border-radius:4px;text-align:center;line-height:32px;'
                 f'font-family:{_MONO};font-size:13px;color:{_MUTED};">{_log_glyph(w.headline)}</div></td>'
                 f'<td valign="middle">'
-                f'<p style="font-family:{_SANS};font-size:14px;font-weight:700;color:{_INK};margin:0;line-height:1.4;">{_esc(w.headline)}</p>'
+                f'<p style="font-family:{_SERIF};font-size:16px;font-weight:700;color:{_INK};margin:0;line-height:1.4;">{_esc(w.headline)}</p>'
                 f'<p style="font-family:{_SANS};font-size:11px;color:{_MUTED};margin:1px 0 0;">{sub}</p>'
                 f'</td></tr></table>')
         content = "".join(items)
@@ -378,7 +384,7 @@ def _footer() -> str:
     {_rule()}
     <table width="100%" role="presentation" cellpadding="0" cellspacing="0" style="margin-top:32px;"><tr>
       <td valign="top" width="55%">
-        <p style="font-family:{_SANS};font-size:13px;font-weight:700;font-style:italic;color:{_BRAND};margin:0;">Private by design.</p>
+        <p style="font-family:{_SERIF};font-size:15px;font-weight:700;font-style:italic;color:{_BRAND};margin:0;">Private by design.</p>
         <p style="font-family:{_SANS};font-size:11px;line-height:1.5;color:{_MUTED};margin:4px 0 0;max-width:220px;">We read GitHub that you approve. Your code never leaves your repos.</p>
       </td>
       <td valign="top" align="right" width="45%">
@@ -409,7 +415,7 @@ def _build_digest_html(digest: DigestResult, context: DigestContext,
           <div style="font-family:{_MONO};font-size:9px;font-weight:500;color:{_MUTED};letter-spacing:0.05em;white-space:nowrap;margin-top:2px;">BUILT ON YOUR GITHUB</div>
         </td>
         <td valign="top" align="right" style="padding-top:4px;white-space:nowrap;">
-          <div style="font-family:{_MONO};font-size:10px;font-weight:500;color:{_MUTED};letter-spacing:0.05em;">{_fmt_date(period_end)} &middot; 8:00 AM</div>
+          <div style="font-family:{_MONO};font-size:10px;font-weight:500;color:{_MUTED};letter-spacing:0.05em;">{_delivery_date()} &middot; {_delivery_time()}</div>
         </td>
       </tr>
     </table>"""

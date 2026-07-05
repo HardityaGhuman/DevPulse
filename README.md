@@ -37,7 +37,7 @@ A React single-page app talks to a stateless FastAPI service over a JSON API.
 
 **Frontend** — React + Vite, Tailwind CSS, React Router, Clerk for authentication.
 
-**Backend** — FastAPI (Python 3.13), Supabase (PostgreSQL), LiteLLM (Gemini 2.5 Flash primary, Groq Llama-3.3-70B fallback), Resend for email. Deployed on Google Cloud Run.
+**Backend** — FastAPI (Python 3.13), Supabase (PostgreSQL), LiteLLM (Gemini 2.5 Flash primary, Groq OpenAI gpt-oss-120b fallback), Resend for email. Deployed on Google Cloud Run.
 
 ### Security highlights
 
