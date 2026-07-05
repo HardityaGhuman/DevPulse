@@ -15,27 +15,66 @@ def test_interval_hours():
     assert d._interval_hours("bogus") is None
 
 
+def _u(**kw):
+    return {"digest_frequency": kw.pop("freq", "6h"), **kw}
+
+
+# ── interval frequencies (time-of-day doesn't apply) ──
 def test_is_due_never_sent():
-    assert d._is_due("6h", None, NOW) is True
+    assert d._is_due(_u(freq="6h"), None, NOW) is True
 
 
 def test_is_due_elapsed_enough():
-    last = NOW - timedelta(hours=6)
-    assert d._is_due("6h", last, NOW) is True
+    assert d._is_due(_u(freq="6h"), NOW - timedelta(hours=6), NOW) is True
 
 
 def test_is_due_within_grace():
     last = NOW - timedelta(hours=5, minutes=40)   # 5h40 >= 6h-30min -> due
-    assert d._is_due("6h", last, NOW) is True
+    assert d._is_due(_u(freq="6h"), last, NOW) is True
 
 
 def test_is_due_too_soon():
-    last = NOW - timedelta(hours=2)
-    assert d._is_due("6h", last, NOW) is False
+    assert d._is_due(_u(freq="6h"), NOW - timedelta(hours=2), NOW) is False
 
 
 def test_is_due_off_never():
-    assert d._is_due("off", None, NOW) is False
+    assert d._is_due(_u(freq="off"), None, NOW) is False
+
+
+# ── daily/weekly honour hour + timezone + day ──  (NOW = 2026-07-02 12:00 UTC, a Thursday)
+def test_daily_due_at_chosen_hour_utc():
+    assert d._is_due(_u(freq="daily", digest_hour=12, digest_timezone="UTC"), None, NOW) is True
+
+
+def test_daily_not_due_off_hour():
+    assert d._is_due(_u(freq="daily", digest_hour=13, digest_timezone="UTC"), None, NOW) is False
+
+
+def test_daily_respects_timezone():
+    # 12:00 UTC == 17:30 in Asia/Kolkata -> local hour 17.
+    ist = _u(freq="daily", digest_hour=17, digest_timezone="Asia/Kolkata")
+    assert d._is_due(ist, None, NOW) is True
+    assert d._is_due(_u(freq="daily", digest_hour=12, digest_timezone="Asia/Kolkata"), None, NOW) is False
+
+
+def test_daily_once_per_day():
+    # Right hour, but already sent earlier today -> not due again.
+    u = _u(freq="daily", digest_hour=12, digest_timezone="UTC")
+    assert d._is_due(u, NOW - timedelta(hours=1), NOW) is False
+    assert d._is_due(u, NOW - timedelta(days=1), NOW) is True
+
+
+def test_weekly_due_on_day_and_hour():
+    thu = _u(freq="weekly", digest_hour=12, digest_day="thursday", digest_timezone="UTC")
+    assert d._is_due(thu, None, NOW) is True
+    fri = _u(freq="weekly", digest_hour=12, digest_day="friday", digest_timezone="UTC")
+    assert d._is_due(fri, None, NOW) is False
+
+
+def test_weekly_not_twice_in_week():
+    thu = _u(freq="weekly", digest_hour=12, digest_day="thursday", digest_timezone="UTC")
+    assert d._is_due(thu, NOW - timedelta(days=2), NOW) is False
+    assert d._is_due(thu, NOW - timedelta(days=7), NOW) is True
 
 
 def test_cache_fresh():

@@ -23,16 +23,27 @@ async def get_digest_settings(user: dict = Depends(get_current_user)):
     return {
         "digest_frequency": user.get("digest_frequency", "off"),
         "tracked_repos": user.get("tracked_repos"),
+        "digest_hour": user.get("digest_hour"),
+        "digest_day": user.get("digest_day"),
+        "digest_timezone": user.get("digest_timezone"),
     }
 
 
 @router.post("/settings")
-async def update_digest_settings(body: DigestSettingsRequest, user: dict = Depends(get_current_user)):
+@limiter.limit("30/minute")
+async def update_digest_settings(request: Request, body: DigestSettingsRequest,
+                                 user: dict = Depends(get_current_user)):
     """Update the user's digest preferences."""
     supabase = get_supabase()
     update_data = {"digest_frequency": body.digest_frequency}
     if body.tracked_repos is not None:
         update_data["tracked_repos"] = body.tracked_repos
+    if body.digest_hour is not None:
+        update_data["digest_hour"] = body.digest_hour
+    if body.digest_day is not None:
+        update_data["digest_day"] = body.digest_day
+    if body.digest_timezone is not None:
+        update_data["digest_timezone"] = body.digest_timezone
 
     supabase.table("users").update(update_data).eq("id", user["id"]).execute()
     return {"message": "Settings updated", **update_data}

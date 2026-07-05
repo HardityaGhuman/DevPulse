@@ -2,8 +2,10 @@
 DevPulse — Pydantic Request/Response Schemas
 """
 
-from pydantic import BaseModel, Field
+import re
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, Literal
+from zoneinfo import ZoneInfo
 
 
 # ── LLM Digest I/O (typed, provider-agnostic) ───────────────────
@@ -63,14 +65,47 @@ class DigestResult(BaseModel):
 
 # ── Digest Schemas ──────────────────────────────────────────────
 
+_DAYS = "^(monday|tuesday|wednesday|thursday|friday|saturday|sunday)$"
+
+
 class DigestSettingsRequest(BaseModel):
     digest_frequency: str = Field(..., pattern="^(off|6h|12h|daily|weekly)$")
-    tracked_repos: Optional[list[str]] = None
+    # Bounded before storage: max 200 repos, each an owner/name slug (GitHub caps segments
+    # at 39/100 chars; 141 covers owner + "/" + name with margin).
+    tracked_repos: Optional[list[str]] = Field(None, max_length=200)
+    # Scheduling for daily/weekly. hour = 0–23 in the user's tz; day = weekday for weekly.
+    digest_hour: Optional[int] = Field(None, ge=0, le=23)
+    digest_day: Optional[str] = Field(None, pattern=_DAYS)
+    digest_timezone: Optional[str] = Field(None, max_length=64)
+
+    @field_validator("tracked_repos")
+    @classmethod
+    def _valid_repos(cls, v):
+        if v is None:
+            return v
+        for name in v:
+            if not (0 < len(name) <= 141) or not re.fullmatch(r"[A-Za-z0-9_.\-]+/[A-Za-z0-9_.\-]+", name):
+                raise ValueError("tracked_repos entries must be owner/name")
+        return v
+
+    @field_validator("digest_timezone")
+    @classmethod
+    def _valid_tz(cls, v):
+        if v is None:
+            return v
+        try:
+            ZoneInfo(v)
+        except Exception as exc:
+            raise ValueError("invalid IANA timezone") from exc
+        return v
 
 
 class DigestSettingsResponse(BaseModel):
     digest_frequency: str
     tracked_repos: Optional[list[str]] = None
+    digest_hour: Optional[int] = None
+    digest_day: Optional[str] = None
+    digest_timezone: Optional[str] = None
 
 
 class DigestHistoryItem(BaseModel):

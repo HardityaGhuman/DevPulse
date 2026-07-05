@@ -58,6 +58,8 @@ async def get_me(user: dict = Depends(get_current_user)):
         "github_username": user.get("github_username"),
         "digest_frequency": user.get("digest_frequency", "daily"),
         "digest_day": user.get("digest_day", "monday"),
+        "digest_hour": user.get("digest_hour"),
+        "digest_timezone": user.get("digest_timezone"),
         "tracked_repos": user.get("tracked_repos"),
         "created_at": user.get("created_at"),
     }
