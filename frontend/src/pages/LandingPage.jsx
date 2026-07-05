@@ -146,12 +146,10 @@ export default function LandingPage() {
             </h1>
             <p className="mt-8" style={{ fontSize: 20, lineHeight: 1.6, color: "var(--color-ink)", maxWidth: "36rem" }}>
               DevPulse reads your GitHub activity and emails you a composed digest — commits,
-              reviews, streaks, and the pull requests waiting on you. On your schedule, not the
-              firehose.
+              reviews, streaks, and the pull requests waiting for you, on your schedule.
             </p>
             <div className="mt-12 flex items-center gap-6">
               <SignInPill className="px-8 py-4" />
-              <a href="#sample" className="mono" style={{ color: "var(--color-ink)" }}>read a sample →</a>
             </div>
           </motion.div>
           <motion.div
@@ -212,7 +210,7 @@ export default function LandingPage() {
       <Feature
         num="03" label="CADENCE"
         heading="Your" accent="pace," tail="not the firehose."
-        lede="Choose delivery — off, every 6h, 12h, daily, or weekly. One composed email, never another dashboard to babysit."
+        lede="Choose delivery — off, every 6h, 12h, daily, or weekly. One composed email, delivered on your cadence."
         card={
           <MiniCard>
             {["6h", "12h", "Daily", "Weekly"].map((o) => {
