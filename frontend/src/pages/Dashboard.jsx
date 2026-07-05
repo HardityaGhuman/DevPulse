@@ -1,222 +1,442 @@
-import { useEffect, useState } from "react";
+/*
+  DevPulse — Dashboard (digest settings).
+  Editorial/broadsheet language shared with the landing (serif + mono, hairlines,
+  indigo scalpel accent, glass cards). Exposes exactly two controls — delivery
+  frequency and tracked repos — plus a "send one now" action, the static digest
+  sample, and a read-only list of past issues.
+
+  Grounded to real backend endpoints:
+    GET  /api/users/me            → profile
+    GET  /api/digest/settings     → { digest_frequency, tracked_repos }
+    POST /api/digest/settings     → persist { digest_frequency, tracked_repos? }
+    GET  /api/github/repos        → { repos: [{ name, language, private, ... }] }
+    POST /api/digest/send-now     → generate + email now (rate limited 5/min)
+    GET  /api/digest/history      → { digests: [{ period_end, ai_summary, email_sent_at }] }
+  No live preview (project direction) — the digest only truly arrives by email.
+*/
+
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Code2, GitPullRequest, BarChart3, Clock, ArrowRight, TrendingUp } from "lucide-react";
+import { UserButton } from "@clerk/clerk-react";
+import { Lock } from "lucide-react";
 import api from "@/lib/api";
-import { formatRelativeTime, getScoreColor } from "@/lib/utils";
+import DigestSample from "@/components/DigestSample";
 
-const fadeUp = {
-  initial: { opacity: 0, y: 16 },
-  animate: { opacity: 1, y: 0 },
+const PAGE = "max-w-[1200px] mx-auto px-6 md:px-20";
+
+const FREQS = [
+  { v: "off", label: "Off", hint: "Paused — DevPulse won't email you until you turn this back on." },
+  { v: "6h", label: "6h", hint: "A fresh brief every six hours — for the busiest days." },
+  { v: "12h", label: "12h", hint: "Twice a day — a morning and an evening read." },
+  { v: "daily", label: "Daily", hint: "One composed brief each day. The classic cadence." },
+  { v: "weekly", label: "Weekly", hint: "A single digest at the end of the week." },
+];
+
+const HOURS = Array.from({ length: 24 }, (_, h) => h);
+const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+const BROWSER_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+const hourLabel = (h) => `${String(h).padStart(2, "0")}:00`;
+const selectStyle = {
+  textTransform: "none", fontSize: 14, padding: "6px 12px", borderRadius: 8,
+  border: "1px solid var(--color-hairline)", background: "#fff", color: "var(--color-ink)",
+  cursor: "pointer",
 };
 
+/* Fade + rise on scroll into view — same motion as the landing. */
+function Reveal({ children, delay = 0, className = "" }) {
+  return (
+    <motion.div
+      className={className}
+      initial={{ opacity: 0, y: 26 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-80px" }}
+      transition={{ duration: 0.6, delay, ease: [0.22, 1, 0.36, 1] }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+/* A numbered editorial section: mono "0X — LABEL" rail + content, hairline top. */
+function Section({ num, label, children }) {
+  return (
+    <section style={{ borderTop: "1px solid var(--color-hairline)" }}>
+      <div className={`${PAGE} py-16 md:py-20`}>
+        <Reveal className="grid grid-cols-1 md:grid-cols-12 gap-8">
+          <div className="md:col-span-2">
+            <p className="mono" style={{ color: "var(--color-muted)" }}>{num} — {label}</p>
+          </div>
+          <div className="md:col-start-3 md:col-span-9">{children}</div>
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
+const LANG_DOT = {
+  JavaScript: "#f1e05a", TypeScript: "#3178c6", Python: "#3572A5", Go: "#00ADD8",
+  Rust: "#dea584", Ruby: "#701516", Java: "#b07219", "C++": "#f34b7d", C: "#555555",
+  Shell: "#89e051", HTML: "#e34c26", CSS: "#563d7c", Swift: "#F05138", Kotlin: "#A97BFF",
+};
+
+function fmtDate(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }).toUpperCase();
+}
+
+function fmtTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
+function headlineOf(aiSummary) {
+  if (!aiSummary) return "Digest delivered.";
+  try {
+    const parsed = typeof aiSummary === "string" ? JSON.parse(aiSummary) : aiSummary;
+    return parsed.headline || "Digest delivered.";
+  } catch {
+    return typeof aiSummary === "string" ? aiSummary : "Digest delivered.";
+  }
+}
+
 export default function Dashboard() {
-  const [reviews, setReviews] = useState([]);
-  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [repos, setRepos] = useState([]);
+  const [history, setHistory] = useState([]);
+
+  // settings + saved baseline (to compute the dirty state)
+  const [freq, setFreq] = useState("off");
+  const [selected, setSelected] = useState(() => new Set());
+  const [hour, setHour] = useState(8);
+  const [day, setDay] = useState("monday");
+  const [tz, setTz] = useState(BROWSER_TZ);
+  const [saved, setSaved] = useState({ freq: "off", repos: [], hour: 8, day: "monday", tz: BROWSER_TZ });
+
+  const [reposLoading, setReposLoading] = useState(true);
+  const [repoQuery, setRepoQuery] = useState("");
+  const [saveState, setSaveState] = useState("idle"); // idle | saving | ok | err
 
   useEffect(() => {
-    async function load() {
-      try {
-        const [reviewsRes, userRes] = await Promise.all([
-          api.get("/api/review/history"),
-          api.get("/api/users/me"),
-        ]);
-        setReviews(reviewsRes.data.reviews || []);
-        setUser(userRes.data);
-      } catch (e) {
-        console.error("Failed to load dashboard:", e);
-      } finally {
-        setLoading(false);
+    let alive = true;
+
+    // Critical path — profile + settings gate the page. Both are fast (DB reads),
+    // so the page paints quickly instead of waiting on the slow GitHub repo fetch.
+    (async () => {
+      const [meRes, setRes] = await Promise.allSettled([
+        api.get("/api/users/me"),
+        api.get("/api/digest/settings"),
+      ]);
+      if (!alive) return;
+      if (meRes.status === "fulfilled") setProfile(meRes.value.data);
+      if (setRes.status === "fulfilled") {
+        const s = setRes.value.data;
+        const initFreq = s.digest_frequency || "off";
+        const initRepos = s.tracked_repos || [];
+        const initHour = s.digest_hour ?? 8;
+        const initDay = s.digest_day || "monday";
+        const initTz = s.digest_timezone || BROWSER_TZ;
+        setFreq(initFreq);
+        setSelected(new Set(initRepos));
+        setHour(initHour);
+        setDay(initDay);
+        setTz(initTz);
+        setSaved({ freq: initFreq, repos: initRepos, hour: initHour, day: initDay, tz: initTz });
       }
-    }
-    load();
+      if (meRes.status === "rejected" && setRes.status === "rejected") {
+        setError("Couldn't load your settings. Refresh to try again.");
+      }
+      setLoading(false);
+    })();
+
+    // Non-blocking — the GitHub repo list is the slow call (live REST fetch); let it
+    // stream in after first paint, with its own loading state in the repos card.
+    api.get("/api/github/repos")
+      .then((r) => { if (alive) setRepos(r.data.repos || []); })
+      .catch(() => {})
+      .finally(() => { if (alive) setReposLoading(false); });
+
+    api.get("/api/digest/history")
+      .then((r) => { if (alive) setHistory(r.data.digests || []); })
+      .catch(() => {});
+
+    return () => { alive = false; };
   }, []);
 
-  const codeReviews = reviews.filter((r) => r.type === "code");
-  const prReviews = reviews.filter((r) => r.type === "pr");
-  const avgScore =
-    reviews.length > 0
-      ? Math.round(reviews.reduce((sum, r) => sum + (r.score || 0), 0) / reviews.length)
-      : 0;
+  const dirty = useMemo(() => {
+    const a = [...selected].sort();
+    const b = [...saved.repos].sort();
+    const sameRepos = a.length === b.length && a.every((v, i) => v === b[i]);
+    return freq !== saved.freq || !sameRepos
+      || hour !== saved.hour || day !== saved.day || tz !== saved.tz;
+  }, [freq, selected, hour, day, tz, saved]);
 
-  const stats = [
-    { label: "Code Reviews", value: codeReviews.length, icon: Code2, color: "text-accent", bg: "bg-accent/10" },
-    { label: "PR Reviews", value: prReviews.length, icon: GitPullRequest, color: "text-success", bg: "bg-success/10" },
-    { label: "Avg Score", value: `${avgScore}/10`, icon: BarChart3, color: "text-amber-400", bg: "bg-amber-400/10" },
-    { label: "Total Reviews", value: reviews.length, icon: TrendingUp, color: "text-purple-400", bg: "bg-purple-400/10" },
-  ];
+  const filteredRepos = useMemo(() => {
+    const q = repoQuery.trim().toLowerCase();
+    if (!q) return repos;
+    return repos.filter((r) => r.name.toLowerCase().includes(q));
+  }, [repos, repoQuery]);
 
-  if (loading) {
-    return (
-      <div className="space-y-8 max-w-6xl mx-auto">
-        <div className="space-y-2">
-          <div className="h-10 w-64 bg-surface-raised rounded-xl animate-pulse" />
-          <div className="h-5 w-48 bg-surface-raised rounded-lg animate-pulse" />
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="glass-card p-6 h-32 rounded-3xl animate-pulse" />
-          ))}
-        </div>
-      </div>
-    );
+  function toggleRepo(name) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
   }
 
+  async function save() {
+    setSaveState("saving");
+    try {
+      const tracked = [...selected]; // empty array = all repos (backend convention)
+      await api.post("/api/digest/settings", {
+        digest_frequency: freq, tracked_repos: tracked,
+        digest_hour: hour, digest_day: day, digest_timezone: tz,
+      });
+      setSaved({ freq, repos: tracked, hour, day, tz });
+      setSaveState("ok");
+      setTimeout(() => setSaveState("idle"), 2500);
+    } catch {
+      setSaveState("err");
+    }
+  }
+
+  const activeHint = FREQS.find((f) => f.v === freq)?.hint;
+
   return (
-    <div className="space-y-12 max-w-6xl mx-auto pb-12">
-      {/* Header */}
-      <motion.div {...fadeUp} transition={{ duration: 0.6 }}>
-        <h1 className="text-4xl font-black tracking-tight text-primary">
-          Welcome back{user?.github_username ? `, ${user.github_username}` : ""}
-        </h1>
-        <p className="text-muted text-lg mt-2 font-medium">Here's your development overview</p>
-      </motion.div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat, i) => (
-          <motion.div
-            key={stat.label}
-            className="glass-card p-6 rounded-3xl card-hover-effect relative overflow-hidden group"
-            variants={fadeUp}
-            initial="initial"
-            animate="animate"
-            transition={{ delay: i * 0.1, duration: 0.5 }}
-          >
-            <div className={`absolute -right-4 -bottom-4 w-24 h-24 ${stat.bg} rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity`} />
-            <div className="flex items-center justify-between mb-4">
-              <div className={`w-10 h-10 rounded-xl ${stat.bg} flex items-center justify-center border border-border/50`}>
-                <stat.icon className={`w-5 h-5 ${stat.color}`} />
-              </div>
-              <span className="text-sm font-bold text-muted tracking-wider uppercase">{stat.label}</span>
-            </div>
-            <p className="text-4xl font-black text-primary tracking-tight">{stat.value}</p>
-          </motion.div>
-        ))}
-      </div>
-
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Link to="/review/code" className="glass-card p-8 group cursor-pointer no-underline block rounded-[32px] card-hover-effect relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
-            <Code2 className="w-32 h-32 text-accent" />
-          </div>
-          <div className="flex items-center justify-between relative z-10">
-            <div>
-              <h3 className="text-2xl font-bold text-primary flex items-center gap-3">
-                <Code2 className="w-6 h-6 text-accent" />
-                New Code Review
-              </h3>
-              <p className="text-muted mt-2 text-lg font-medium max-w-[280px]">
-                Paste code and get instant AI-powered feedback
-              </p>
-            </div>
-            <div className="w-12 h-12 rounded-2xl bg-primary/[0.03] border border-border/50 flex items-center justify-center group-hover:bg-accent transition-colors">
-              <ArrowRight className="w-6 h-6 text-primary group-hover:translate-x-1 transition-transform" />
-            </div>
-          </div>
-        </Link>
-        
-        <Link to="/review/pr" className="glass-card p-8 group cursor-pointer no-underline block rounded-[32px] card-hover-effect relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
-            <GitPullRequest className="w-32 h-32 text-success" />
-          </div>
-          <div className="flex items-center justify-between relative z-10">
-            <div>
-              <h3 className="text-2xl font-bold text-primary flex items-center gap-3">
-                <GitPullRequest className="w-6 h-6 text-success" />
-                New PR Review
-              </h3>
-              <p className="text-muted mt-2 text-lg font-medium max-w-[280px]">
-                Analyze a GitHub pull request with AI
-              </p>
-            </div>
-            <div className="w-12 h-12 rounded-2xl bg-primary/[0.03] border border-border/50 flex items-center justify-center group-hover:bg-success transition-colors">
-              <ArrowRight className="w-6 h-6 text-primary group-hover:translate-x-1 transition-transform" />
-            </div>
-          </div>
-        </Link>
-      </div>
-
-      {/* Recent Reviews */}
-      <motion.div 
-        variants={fadeUp} 
-        initial="initial" 
-        animate="animate" 
-        transition={{ delay: 0.4 }}
-        className="space-y-6"
-      >
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-primary flex items-center gap-3">
-            <Clock className="w-6 h-6 text-muted" />
-            Recent Reviews
-          </h2>
-          {reviews.length > 0 && (
-            <Link to="/history" className="text-sm font-bold text-accent hover:text-accent/80 transition-colors no-underline px-4 py-2 rounded-xl bg-accent/5 border border-accent/10">
-              View all
-            </Link>
-          )}
+    <div style={{ background: "var(--color-page)", minHeight: "100vh" }}>
+      {/* nav */}
+      <div className="glass-nav sticky top-0 z-50">
+        <div className={`${PAGE} py-4 flex justify-between items-center`}>
+          <Link to="/" className="serif" style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em" }}>
+            DEVPULSE
+          </Link>
+          <UserButton afterSignOutUrl="/" />
         </div>
+      </div>
 
-        {reviews.length === 0 ? (
-          <div className="glass-card p-20 text-center rounded-[32px] border-dashed border-2">
-            <div className="w-20 h-20 bg-primary/[0.03] rounded-3xl flex items-center justify-center mx-auto mb-6">
-              <Code2 className="w-10 h-10 text-muted" />
+      {/* header + read-only profile */}
+      <div className={`${PAGE} pt-16 md:pt-20 pb-10`}>
+        <Reveal>
+          <p className="mono rule pt-6" style={{ color: "var(--color-muted)" }}>
+            {profile?.github_username || "—"}
+            {profile?.email ? ` · ${profile.email}` : ""}
+            {profile?.created_at ? ` · MEMBER SINCE ${fmtDate(profile.created_at)}` : ""}
+          </p>
+          <h1 className="serif" style={{ fontSize: 56, fontWeight: 700, lineHeight: 1.1, letterSpacing: "-0.02em", margin: "12px 0 0" }}>
+            Your daily <span className="italic" style={{ color: "var(--color-accent)" }}>brief.</span>
+          </h1>
+        </Reveal>
+      </div>
+
+      {error && (
+        <div className={`${PAGE} mt-8`}>
+          <p className="mono" style={{ color: "var(--color-bad)", textTransform: "none" }}>{error}</p>
+        </div>
+      )}
+
+      {loading ? (
+        <div className={`${PAGE} py-24`}>
+          <p className="mono" style={{ color: "var(--color-muted)" }}>Loading your brief…</p>
+        </div>
+      ) : (
+        <>
+          {/* 01 — DELIVERY */}
+          <Section num="01" label="DELIVERY">
+            <div className="flex flex-wrap gap-2">
+              {FREQS.map((f) => {
+                const on = f.v === freq;
+                return (
+                  <button
+                    key={f.v}
+                    onClick={() => setFreq(f.v)}
+                    className="mono"
+                    style={{
+                      textTransform: "none", fontSize: 14, padding: "8px 18px", borderRadius: 9999,
+                      border: `1px solid ${on ? "var(--color-accent)" : "var(--color-hairline)"}`,
+                      color: on ? "#fff" : "var(--color-ink)",
+                      background: on ? "var(--color-accent)" : "transparent",
+                      fontWeight: on ? 700 : 400, transition: "all 0.15s",
+                    }}
+                  >
+                    {f.label}
+                  </button>
+                );
+              })}
             </div>
-            <p className="text-muted text-xl font-medium">No reviews yet. Start your first code review!</p>
-          </div>
-        ) : (
-          <div className="grid gap-4">
-            {reviews.slice(0, 5).map((review, i) => (
-              <motion.div
-                key={review.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.5 + i * 0.05 }}
-              >
-                <Link
-                  to={`/review/${review.id}`}
-                  className="glass-card p-5 flex items-center justify-between group no-underline block rounded-2xl card-hover-effect"
+            <p className="mt-5" style={{ fontSize: 17, lineHeight: 1.6, color: "var(--color-muted)", maxWidth: "55ch" }}>
+              {activeHint}
+            </p>
+
+            {(freq === "daily" || freq === "weekly") && (
+              <div className="mt-6 flex flex-wrap items-center gap-3">
+                <span className="mono" style={{ color: "var(--color-muted)", fontSize: 12 }}>Deliver</span>
+                {freq === "weekly" && (
+                  <select
+                    value={day}
+                    onChange={(e) => setDay(e.target.value)}
+                    className="mono"
+                    style={selectStyle}
+                  >
+                    {DAYS.map((d) => <option key={d} value={d}>{cap(d)}</option>)}
+                  </select>
+                )}
+                <span className="mono" style={{ color: "var(--color-muted)", fontSize: 12 }}>at</span>
+                <select
+                  value={hour}
+                  onChange={(e) => setHour(Number(e.target.value))}
+                  className="mono"
+                  style={selectStyle}
                 >
-                  <div className="flex items-center gap-5">
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center border border-border/50 ${
-                      review.type === "code" ? "bg-accent/10" : "bg-success/10"
-                    }`}>
-                      {review.type === "code" ? (
-                        <Code2 className="w-5 h-5 text-accent" />
-                      ) : (
-                        <GitPullRequest className="w-5 h-5 text-success" />
-                      )}
-                    </div>
-                    <div>
-                      <p className="text-lg text-primary font-bold">
-                        {review.type === "pr"
-                          ? review.repo_name || "PR Review"
-                          : `${review.language || "Code"} Review`}
-                      </p>
-                      <p className="text-sm text-muted font-medium">{formatRelativeTime(review.created_at)}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-6">
-                    {review.score && (
-                      <div className="text-right px-4 py-1.5 rounded-xl bg-primary/[0.03] border border-border/50">
-                        <span className={`text-lg font-black ${getScoreColor(review.score)}`}>
-                          {review.score}
+                  {HOURS.map((h) => <option key={h} value={h}>{hourLabel(h)}</option>)}
+                </select>
+                <span className="mono" style={{ color: "var(--color-muted)", fontSize: 12, textTransform: "none" }}>{tz}</span>
+              </div>
+            )}
+          </Section>
+
+          {/* 02 — TRACKED REPOS */}
+          <Section num="02" label="TRACKED REPOS">
+            <div className="glass" style={{ borderRadius: 12, overflow: "hidden" }}>
+              <div className="px-5 py-4" style={{ borderBottom: "1px solid var(--color-hairline)" }}>
+                <input
+                  value={repoQuery}
+                  onChange={(e) => setRepoQuery(e.target.value)}
+                  placeholder="Search repositories…"
+                  className="mono w-full"
+                  style={{
+                    textTransform: "none", fontSize: 14, background: "transparent",
+                    border: "none", outline: "none", color: "var(--color-ink)",
+                  }}
+                />
+              </div>
+              <div style={{ maxHeight: 340, overflowY: "auto" }}>
+                {filteredRepos.length === 0 ? (
+                  <p className="mono px-5 py-6" style={{ color: "var(--color-muted)", textTransform: "none" }}>
+                    {reposLoading ? "Loading your repositories…" : repos.length === 0 ? "No repositories found on your account." : "No matches."}
+                  </p>
+                ) : (
+                  filteredRepos.map((r) => {
+                    const on = selected.has(r.name);
+                    return (
+                      <button
+                        key={r.name}
+                        onClick={() => toggleRepo(r.name)}
+                        className="w-full flex items-center gap-3 px-5 py-3 text-left"
+                        style={{ borderBottom: "1px solid var(--color-hairline)", background: on ? "var(--color-tint)" : "transparent" }}
+                      >
+                        <span
+                          className="shrink-0 flex items-center justify-center"
+                          style={{
+                            width: 18, height: 18, borderRadius: 4,
+                            border: `1px solid ${on ? "var(--color-accent)" : "var(--color-hairline)"}`,
+                            background: on ? "var(--color-accent)" : "transparent", color: "#fff", fontSize: 12,
+                          }}
+                        >
+                          {on ? "✓" : ""}
                         </span>
-                        <span className="text-xs text-muted font-bold ml-1">/10</span>
-                      </div>
-                    )}
-                    <div className="w-10 h-10 rounded-xl bg-primary/[0.03] border border-border/50 flex items-center justify-center group-hover:bg-primary/[0.08] transition-colors">
-                      <ArrowRight className="w-5 h-5 text-muted group-hover:text-primary transition-all" />
-                    </div>
+                        <span className="flex-1 min-w-0">
+                          <span className="mono block truncate" style={{ textTransform: "none", fontSize: 14, color: "var(--color-ink)" }}>
+                            {r.name}
+                          </span>
+                          {r.language && (
+                            <span className="mono flex items-center gap-1 mt-0.5" style={{ textTransform: "none", fontSize: 11, color: "var(--color-muted)" }}>
+                              <span style={{ width: 8, height: 8, borderRadius: 9999, background: LANG_DOT[r.language] || "#9ca3af", display: "inline-block" }} />
+                              {r.language}
+                            </span>
+                          )}
+                        </span>
+                        <span className="mono shrink-0" style={{ fontSize: 10, padding: "2px 8px", borderRadius: 9999, border: "1px solid var(--color-hairline)", color: "var(--color-muted)" }}>
+                          {r.private ? "PRIVATE" : "PUBLIC"}
+                        </span>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+            <p className="mono mt-3 italic" style={{ textTransform: "none", fontSize: 12, color: "var(--color-muted)" }}>
+              {selected.size === 0
+                ? "Nothing selected — your brief covers all repositories."
+                : `${selected.size} repositor${selected.size === 1 ? "y" : "ies"} tracked.`}
+            </p>
+
+            {/* actions */}
+            <div className="mt-8 flex flex-wrap items-center gap-4">
+              <button
+                onClick={save}
+                disabled={!dirty || saveState === "saving"}
+                className="btn-dark px-6 py-3"
+                style={{ opacity: !dirty || saveState === "saving" ? 0.4 : 1, cursor: !dirty ? "default" : "pointer" }}
+              >
+                {saveState === "saving" ? "Saving…" : "Save changes"}
+              </button>
+
+              {saveState === "ok" && <span className="mono" style={{ color: "var(--color-ok)", textTransform: "none" }}>Saved.</span>}
+              {saveState === "err" && <span className="mono" style={{ color: "var(--color-bad)", textTransform: "none" }}>Couldn't save — try again.</span>}
+            </div>
+          </Section>
+
+          {/* 03 — YOUR DIGEST (static sample, no live preview) */}
+          <Section num="03" label="YOUR DIGEST">
+            <div style={{ maxWidth: 560 }}>
+              <DigestSample />
+            </div>
+            <p className="mono mt-4 italic" style={{ textTransform: "none", fontSize: 12, color: "var(--color-muted)" }}>
+              A sample of the format — your real digest arrives by email.
+            </p>
+          </Section>
+
+          {/* 04 — PAST ISSUES */}
+          {history.length > 0 && (
+            <Section num="04" label="PAST ISSUES">
+              <div className="flex flex-col">
+                {history.map((h) => (
+                  <div
+                    key={h.id}
+                    className="flex flex-col md:flex-row md:items-baseline md:justify-between gap-1 md:gap-6 py-4"
+                    style={{ borderTop: "1px solid var(--color-hairline)" }}
+                  >
+                    <span className="mono shrink-0" style={{ color: "var(--color-muted)", minWidth: 120 }}>
+                      {fmtDate(h.email_sent_at || h.period_end || h.created_at)}
+                    </span>
+                    <span className="serif flex-1" style={{ fontSize: 18, lineHeight: 1.4 }}>
+                      {headlineOf(h.ai_summary)}
+                    </span>
+                    <span className="mono shrink-0" style={{ color: "var(--color-muted)", textTransform: "none", fontSize: 12 }}>
+                      {h.email_sent_at ? `Sent ${fmtTime(h.email_sent_at)}` : "Not sent"}
+                    </span>
                   </div>
-                </Link>
-              </motion.div>
-            ))}
-          </div>
-        )}
-      </motion.div>
+                ))}
+              </div>
+            </Section>
+          )}
+
+          {/* footer */}
+          <footer className={`${PAGE} py-12`} style={{ borderTop: "1px solid var(--color-hairline)" }}>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div>
+                <p className="serif italic flex items-center gap-2" style={{ fontSize: 15, fontWeight: 700, color: "var(--color-accent)", margin: 0 }}>
+                  <Lock size={14} strokeWidth={2.4} aria-hidden="true" />
+                  Private by design.
+                </p>
+                <p className="mt-1" style={{ fontSize: 13, color: "var(--color-muted)", maxWidth: "40ch" }}>
+                  We read only the GitHub you approve. Your code never leaves your repos.
+                </p>
+              </div>
+              <div className="serif" style={{ fontSize: 20, fontWeight: 700 }}>DEVPULSE</div>
+            </div>
+          </footer>
+        </>
+      )}
     </div>
   );
 }

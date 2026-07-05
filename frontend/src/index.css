@@ -9,14 +9,22 @@
 
 @theme {
   --color-page: #ffffff;
-  --color-tint: #f9f9f8;          /* section tint band */
-  --color-ink: #1a1a1a;           /* primary text */
-  --color-muted: #6b7280;         /* secondary text */
-  --color-hairline: #eaeaea;      /* rules + borders */
-  --color-accent: #5b5bd6;        /* indigo brand */
-  --color-ok: #16a34a;            /* additions / rising */
-  --color-warn: #d97706;          /* attention */
-  --color-bad: #e11d48;           /* deletions / declining */
+  --color-tint: #f9f9f8;
+  /* section tint band */
+  --color-ink: #1a1a1a;
+  /* primary text */
+  --color-muted: #6b7280;
+  /* secondary text */
+  --color-hairline: #eaeaea;
+  /* rules + borders */
+  --color-accent: #5b5bd6;
+  /* indigo brand */
+  --color-ok: #16a34a;
+  /* additions / rising */
+  --color-warn: #d97706;
+  /* attention */
+  --color-bad: #e11d48;
+  /* deletions / declining */
   --color-conflict-bg: #fef3c7;
   --color-conflict-fg: #92400e;
 
@@ -31,6 +39,7 @@
   html {
     background-color: var(--color-page);
   }
+
   body {
     margin: 0;
     font-family: var(--font-body);
@@ -50,6 +59,7 @@
     background-attachment: fixed;
     background-repeat: no-repeat;
   }
+
   ::selection {
     background: color-mix(in srgb, var(--color-accent) 20%, transparent);
   }
@@ -64,13 +74,16 @@
     letter-spacing: 0.05em;
     text-transform: uppercase;
   }
+
   .serif {
     font-family: var(--font-display);
     letter-spacing: -0.01em;
   }
+
   .rule {
     border-top: 1px solid var(--color-hairline);
   }
+
   /* Frosted glass — semi-transparent over the background glows. */
   .glass {
     background: rgba(255, 255, 255, 0.45);
@@ -78,14 +91,16 @@
     -webkit-backdrop-filter: blur(16px) saturate(150%);
     border: 1px solid rgba(255, 255, 255, 0.75);
     box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset,
-                0 24px 60px -26px rgba(91, 91, 214, 0.35);
+      0 24px 60px -26px rgba(91, 91, 214, 0.35);
   }
+
   .glass-nav {
     background: rgba(255, 255, 255, 0.6);
     backdrop-filter: blur(16px) saturate(160%);
     -webkit-backdrop-filter: blur(16px) saturate(160%);
     border-bottom: 1px solid var(--color-hairline);
   }
+
   .btn-dark {
     background: var(--color-ink);
     color: #fff;
@@ -96,6 +111,7 @@
     text-transform: uppercase;
     transition: opacity 0.2s ease;
   }
+
   .btn-dark:hover {
     opacity: 0.82;
   }
