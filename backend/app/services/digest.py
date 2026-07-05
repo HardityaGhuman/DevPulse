@@ -10,6 +10,7 @@ previews don't re-hit the LLM.
 import json
 import logging
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from app.schemas import DigestContext, DigestResult, WaitingPR, ShippedPR, WorkItem
 from app.clients import github, clerk
 from app.services.ai import generate_digest
@@ -22,6 +23,8 @@ _DELTA_KEYS = ("commits", "prs_opened", "prs_merged", "issues_opened", "reviews"
 _INTERVAL_HOURS = {"6h": 6, "12h": 12, "daily": 24, "weekly": 168}
 _CACHE_TTL = timedelta(hours=1)
 _DUE_GRACE = timedelta(minutes=30)
+_WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+_DEFAULT_HOUR = 8
 
 
 def _interval_hours(freq: str) -> int | None:
@@ -37,13 +40,40 @@ def _parse_ts(value) -> datetime | None:
     return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
 
 
-def _is_due(freq: str, last_digest_at: datetime | None, now: datetime) -> bool:
-    hours = _interval_hours(freq)
-    if hours is None:                       # off / unknown
+def _is_due(user: dict, last: datetime | None, now: datetime) -> bool:
+    """Whether this user should receive a digest at `now` (UTC).
+
+    6h/12h are pure intervals (time-of-day doesn't apply). daily/weekly fire at the user's
+    chosen hour (and weekday) in their timezone — so the cron MUST run at least hourly.
+    """
+    freq = user.get("digest_frequency")
+
+    if freq in ("6h", "12h"):
+        hours = _INTERVAL_HOURS[freq]
+        if last is None:
+            return True
+        return (now - last) >= (timedelta(hours=hours) - _DUE_GRACE)
+
+    if freq not in ("daily", "weekly"):     # off / unknown
         return False
-    if last_digest_at is None:
-        return True
-    return (now - last_digest_at) >= (timedelta(hours=hours) - _DUE_GRACE)
+
+    try:
+        tz = ZoneInfo(user.get("digest_timezone") or "UTC")
+    except Exception:
+        tz = ZoneInfo("UTC")
+    local = now.astimezone(tz)
+    hour = user.get("digest_hour")
+    if local.hour != (_DEFAULT_HOUR if hour is None else int(hour)):
+        return False
+
+    if freq == "weekly":
+        day = (user.get("digest_day") or "monday").lower()
+        if _WEEKDAYS[local.weekday()] != day:
+            return False
+        return last is None or (now - last) >= timedelta(days=6)
+
+    # daily — at most once per local calendar day
+    return last is None or last.astimezone(tz).date() < local.date()
 
 
 def _cache_fresh(cached_at: datetime | None, now: datetime) -> bool:
@@ -157,8 +187,7 @@ async def run_all() -> dict:
     processed = sent = failed = 0
     for user in users:
         try:
-            if not _is_due(user.get("digest_frequency"),
-                           _parse_ts(user.get("last_digest_at")), now):
+            if not _is_due(user, _parse_ts(user.get("last_digest_at")), now):
                 continue
             user["github_access_token"] = await clerk.fetch_github_token(user["clerk_id"])
             result = await generate_and_deliver(user)
