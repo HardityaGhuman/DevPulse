@@ -7,10 +7,14 @@ and a slim repo list for the frontend.
 """
 
 import httpx
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 GRAPHQL = "https://api.github.com/graphql"
 REST = "https://api.github.com"
+
+# Streak spans a long trailing window, NOT the digest period — a daily digest's 24h window
+# could only ever yield a 1-day streak. contributionsCollection allows up to ~1 year.
+_STREAK_WINDOW_DAYS = 365
 
 _CONTRIB_QUERY = """
 query($login:String!, $from:DateTime!, $to:DateTime!) {
@@ -32,6 +36,19 @@ query($login:String!, $from:DateTime!, $to:DateTime!) {
 """
 
 
+_STREAK_QUERY = """
+query($login:String!, $from:DateTime!, $to:DateTime!) {
+  user(login:$login) {
+    contributionsCollection(from:$from, to:$to) {
+      contributionCalendar {
+        weeks { contributionDays { date contributionCount } }
+      }
+    }
+  }
+}
+"""
+
+
 def _headers(token: str) -> dict:
     return {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
 
@@ -41,13 +58,22 @@ def parse_iso(s: str) -> datetime:
 
 
 def _current_streak(weeks: list[dict]) -> int:
-    """Count consecutive most-recent days with activity."""
-    days = [d for w in weeks for d in w.get("contributionDays", [])]
+    """Consecutive most-recent days with any contribution.
+
+    Two edge cases matter: (1) GitHub pads the current week with zero-count *future* days —
+    drop them or they'd read as a broken streak. (2) A still-empty *today* must not break a
+    streak that ran through yesterday (you may not have pushed yet) — skip it, don't stop.
+    """
+    today = datetime.now(timezone.utc).date()
+    days = [d for w in weeks for d in w.get("contributionDays", [])
+            if datetime.fromisoformat(d["date"]).date() <= today]
     days.sort(key=lambda d: d["date"], reverse=True)
     streak = 0
-    for d in days:
+    for i, d in enumerate(days):
         if d.get("contributionCount", 0) > 0:
             streak += 1
+        elif i == 0 and datetime.fromisoformat(d["date"]).date() == today:
+            continue                       # empty today: skip, don't break yesterday's run
         else:
             break
     return streak
@@ -55,6 +81,8 @@ def _current_streak(weeks: list[dict]) -> int:
 
 async def fetch_contributions(username: str, token: str, since: str, until: str) -> dict:
     """Fetch accurate contribution counts + streak for the period."""
+    # Streak needs a wider lookback than the digest window; clamp `from` to <= now.
+    streak_from = (datetime.now(timezone.utc) - timedelta(days=_STREAK_WINDOW_DAYS)).isoformat()
     async with httpx.AsyncClient(timeout=20) as client:
         r = await client.post(
             GRAPHQL,
@@ -65,9 +93,18 @@ async def fetch_contributions(username: str, token: str, since: str, until: str)
         r.raise_for_status()
         cc = (r.json().get("data", {}).get("user", {}) or {}).get("contributionsCollection", {})
 
+        sr = await client.post(
+            GRAPHQL,
+            headers=_headers(token),
+            json={"query": _STREAK_QUERY,
+                  "variables": {"login": username, "from": streak_from, "to": until}},
+        )
+        streak_cc = ((sr.json().get("data", {}).get("user", {}) or {})
+                     .get("contributionsCollection", {}) if sr.status_code == 200 else {})
+
     repos = [x["repository"]["nameWithOwner"]
              for x in cc.get("commitContributionsByRepository", [])]
-    weeks = cc.get("contributionCalendar", {}).get("weeks", [])
+    weeks = streak_cc.get("contributionCalendar", {}).get("weeks", [])
     commits = cc.get("totalCommitContributions", 0)
     prs = cc.get("totalPullRequestContributions", 0)
     issues = cc.get("totalIssueContributions", 0)

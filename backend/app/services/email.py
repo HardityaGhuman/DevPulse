@@ -134,15 +134,6 @@ def _rule() -> str:
             f'height:0;line-height:0;font-size:0;">&nbsp;</div>')
 
 
-def _delta(v: int) -> str:
-    if v > 0:
-        return f'<span style="font-family:{_MONO};font-size:9px;color:{_POS};">&#8593; {v}</span>'
-    if v < 0:
-        return (f'<span style="font-family:{_MONO};font-size:9px;color:{_NEG};">'
-                f'&#8595; {abs(v)}</span>')
-    return f'<span style="font-family:{_MONO};font-size:9px;color:{_MUTED};">&mdash;</span>'
-
-
 # ── Section 1 — AI summary + mac-window card ─────────────────────
 
 def _summary_facts(context: DigestContext) -> str:
@@ -350,30 +341,38 @@ def _section_work_log(context: DigestContext) -> str:
 
 # ── Section 6 — Last 7 days (stat strip) ─────────────────────────
 
-def _stat(label: str, value, delta_key: str, context: DigestContext,
-          value_color: str = _INK) -> str:
-    # Show a delta chip ONLY when there's a real move; no key or a flat 0 → nothing (no dash).
-    v = context.deltas.get(delta_key, 0) if delta_key else 0
-    delta = f'<div style="margin-top:8px;">{_delta(v)}</div>' if v else ''
+def _stat(label: str, value, value_color: str = _INK) -> str:
+    # Bare numeral + label. No period-over-period deltas — the header line carries momentum.
     return (f'<td align="center" valign="top" width="16.66%" style="padding:0 4px;">'
             f'<div style="font-family:{_NUM};font-size:28px;font-weight:700;color:{value_color};line-height:1.2;margin-bottom:4px;">{value}</div>'
             f'<div style="font-family:{_MONO};font-size:8px;font-weight:500;color:{_MUTED};letter-spacing:0.05em;">{label}</div>'
-            f'{delta}</td>')
+            f'</td>')
 
 
-def _section_stats(context: DigestContext) -> str:
-    # Streak is the accent column: orange numeral + full orange label. No delta (redundant).
+# One plain-language phrase per momentum verdict — the only "trend" signal in the digest.
+_MOMENTUM_PHRASE = {
+    "rising": "Momentum is building this week.",
+    "steady": "Holding a steady pace this week.",
+    "declining": "A quieter week than usual.",
+}
+
+
+def _section_stats(context: DigestContext, momentum: str) -> str:
+    # Streak is the accent column: orange numeral + full orange label.
     streak_label = f'<span style="color:{_STREAK};">DAY STREAK</span>'
+    phrase = _MOMENTUM_PHRASE.get(momentum, _MOMENTUM_PHRASE["steady"])
+    caption = (f'<p style="font-family:{_SANS};font-size:13px;font-style:italic;color:{_MUTED};'
+               f'margin:8px 0 0;">{phrase}</p>')
     strip = (
         f'<table width="100%" role="presentation" cellpadding="0" cellspacing="0" style="table-layout:fixed;"><tr>'
-        f'{_stat("PRS OPENED", context.prs_opened, "prs_opened", context)}'
-        f'{_stat("PRS MERGED", context.prs_merged, "prs_merged", context)}'
-        f'{_stat("REVIEWS GIVEN", context.reviews, "reviews", context)}'
-        f'{_stat("ISSUES OPENED", context.issues_opened, "issues_opened", context)}'
-        f'{_stat("REPOS ACTIVE", len(context.repos_active), "", context)}'
-        f'{_stat(streak_label, context.streak_days, "", context, value_color=_STREAK)}'
+        f'{_stat("PRS OPENED", context.prs_opened)}'
+        f'{_stat("PRS MERGED", context.prs_merged)}'
+        f'{_stat("REVIEWS GIVEN", context.reviews)}'
+        f'{_stat("ISSUES OPENED", context.issues_opened)}'
+        f'{_stat("REPOS ACTIVE", len(context.repos_active))}'
+        f'{_stat(streak_label, context.streak_days, value_color=_STREAK)}'
         f'</tr></table>')
-    return f'{_label("6", "Last 7 Days")}{_rule()}<div style="padding-top:32px;">{strip}</div>'
+    return f'{_label("6", "Last 7 Days")}{caption}{_rule()}<div style="padding-top:32px;">{strip}</div>'
 
 
 # ── Footer ───────────────────────────────────────────────────────
@@ -433,7 +432,7 @@ def _build_digest_html(digest: DigestResult, context: DigestContext,
       {_section_shipped(context)}{gap}
       {_section_wip_attention(context)}{gap}
       {_section_work_log(context)}{gap}
-      {_section_stats(context)}
+      {_section_stats(context, digest.momentum)}
       </div>
       <div style="padding:0 32px 48px;">
       {_footer()}

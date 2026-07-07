@@ -1,5 +1,6 @@
 # DevPulse
 
+[![CI](https://img.shields.io/github/actions/workflow/status/HardityaGhuman/DevPulse/ci.yml?style=for-the-badge&logo=github)](https://github.com/HardityaGhuman/DevPulse/actions)
 [![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://reactjs.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com/)
@@ -26,6 +27,40 @@ Keeping track of your own development progress is tedious, and GitHub's notifica
 ## How It Works
 
 A React single-page app talks to a stateless FastAPI service over a JSON API.
+
+### Architecture
+
+```mermaid
+flowchart TD
+    subgraph Client
+        SPA[React SPA]
+    end
+    
+    subgraph GCP Cloud Run
+        API[FastAPI Backend]
+        TaskQueue[GCP Cloud Tasks]
+    end
+    
+    subgraph External Services
+        Clerk[Clerk Auth]
+        GitHub[GitHub API]
+        Supabase[(Supabase / PostgreSQL)]
+        LLM[LiteLLM / Gemini]
+        Resend[Resend Email]
+        Cron[Cloud Scheduler]
+    end
+
+    SPA <--> API
+    API <--> Clerk
+    API <--> GitHub
+    API <--> Supabase
+    API <--> LLM
+    API --> Resend
+    
+    Cron -->|"POST /internal/run-digests"| API
+    API -->|"Enqueues"| TaskQueue
+    TaskQueue -->|"POST /internal/digest/{id}"| API
+```
 
 1. **Authentication** — Sign in with GitHub through Clerk. The frontend attaches a Clerk-issued JWT to every request. The backend verifies the token against Clerk's JWKS, checks the issuer, and looks up (or auto-provisions) the user.
 2. **GitHub access** — The backend fetches the user's GitHub OAuth token **live from Clerk** for each request and holds it in memory only — it is never persisted.

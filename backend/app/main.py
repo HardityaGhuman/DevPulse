@@ -6,8 +6,10 @@ app carries no in-process scheduler — it stays stateless and Cloud Run can sca
 """
 
 import logging
+import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from app.config import settings
@@ -15,13 +17,33 @@ from app.rate_limit import limiter
 from app.routers import github, digest, users, internal
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("devpulse")
+structlog.configure(
+    processors=[
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
+        # %-style args (logger.error("x %s", y)) need this to interpolate; without it the
+        # event stays literal and args dump as a raw positional_args list.
+        structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        # Render exc_info into a real traceback string; without it exc_info=True is just `true`.
+        structlog.processors.format_exc_info,
+        structlog.processors.JSONRenderer()
+    ],
+    wrapper_class=structlog.stdlib.BoundLogger,
+    logger_factory=structlog.stdlib.LoggerFactory(),
+    cache_logger_on_first_use=True,
+)
+logger = structlog.get_logger("devpulse")
 
 app = FastAPI(
     title="DevPulse API",
     description="Developer activity digests delivered by email",
     version="2.0.0",
 )
+
+# Prometheus metrics
+Instrumentator().instrument(app).expose(app)
 
 # Rate limiting
 app.state.limiter = limiter

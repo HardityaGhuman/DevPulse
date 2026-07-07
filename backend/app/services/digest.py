@@ -7,17 +7,24 @@ interval has elapsed. Generated digests are cached on the users row (short TTL) 
 previews don't re-hit the LLM.
 """
 
+import os
 import json
-import logging
+import structlog
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+from fastapi import BackgroundTasks
 from app.schemas import DigestContext, DigestResult, WaitingPR, ShippedPR, WorkItem
 from app.clients import github, clerk
 from app.services.ai import generate_digest
 from app.services.email import send_digest_email
 from app.database import get_supabase
 
-logger = logging.getLogger("devpulse.digest")
+try:
+    from google.cloud import tasks_v2
+except ImportError:
+    tasks_v2 = None
+
+logger = structlog.get_logger("devpulse.digest")
 
 _DELTA_KEYS = ("commits", "prs_opened", "prs_merged", "issues_opened", "reviews")
 _INTERVAL_HOURS = {"6h": 6, "12h": 12, "daily": 24, "weekly": 168}
@@ -178,22 +185,69 @@ async def generate_and_deliver(user: dict) -> dict:
             "period_start": context.period_start, "period_end": context.period_end}
 
 
-async def run_all() -> dict:
-    """Cron batch: send to each non-off user whose interval has elapsed. Per-user isolation."""
+async def process_single_user(user_id: str) -> dict:
+    """Worker task: Generate and send digest for one user."""
+    supabase = get_supabase()
+    user_resp = supabase.table("users").select("*").eq("id", user_id).execute()
+    if not user_resp.data:
+        raise ValueError(f"User {user_id} not found")
+    user = user_resp.data[0]
+    
+    try:
+        user["github_access_token"] = await clerk.fetch_github_token(user["clerk_id"])
+        result = await generate_and_deliver(user)
+        return {"user_id": user_id, "sent": result["email_sent"]}
+    except Exception as e:
+        logger.error("[digest] failed for %s: %s", user.get("email"), e, exc_info=True)
+        raise
+
+def _enqueue_gcp_task(user_id: str, base_url: str):
+    """Enqueue a task to GCP Cloud Tasks."""
+    client = tasks_v2.CloudTasksClient()
+    project = os.environ.get("GCP_PROJECT_ID")
+    location = os.environ.get("GCP_LOCATION")
+    queue = os.environ.get("GCP_QUEUE_NAME")
+    
+    if not all([project, location, queue]):
+        raise ValueError("Missing GCP Tasks environment variables")
+        
+    parent = client.queue_path(project, location, queue)
+    
+    secret = os.environ.get("INTERNAL_CRON_SECRET", "")
+    url = f"{base_url}/internal/digest/{user_id}"
+    
+    task = {
+        "http_request": {
+            "http_method": tasks_v2.HttpMethod.POST,
+            "url": url,
+            "headers": {"X-Internal-Secret": secret},
+        }
+    }
+    client.create_task(request={"parent": parent, "task": task})
+
+async def run_all(background_tasks: BackgroundTasks, base_url: str) -> dict:
+    """Cron batch: Enqueue tasks for each non-off user whose interval has elapsed. Per-user isolation."""
     supabase = get_supabase()
     now = datetime.now(timezone.utc)
     users = (supabase.table("users").select("*").neq("digest_frequency", "off")
              .execute().data or [])
-    processed = sent = failed = 0
+             
+    enqueued = 0
+    use_gcp = os.environ.get("USE_GCP_TASKS", "false").lower() == "true"
+    
     for user in users:
-        try:
-            if not _is_due(user, _parse_ts(user.get("last_digest_at")), now):
-                continue
-            user["github_access_token"] = await clerk.fetch_github_token(user["clerk_id"])
-            result = await generate_and_deliver(user)
-            processed += 1
-            sent += 1 if result["email_sent"] else 0
-        except Exception as e:
-            failed += 1
-            logger.error("[digest] failed for %s: %s", user.get("email"), e)
-    return {"processed": processed, "sent": sent, "failed": failed}
+        if not _is_due(user, _parse_ts(user.get("last_digest_at")), now):
+            continue
+            
+        if use_gcp and tasks_v2:
+            try:
+                _enqueue_gcp_task(user["id"], base_url)
+            except Exception as e:
+                logger.error("Failed to enqueue GCP task for %s: %s", user["id"], e)
+                background_tasks.add_task(process_single_user, user["id"])
+        else:
+            background_tasks.add_task(process_single_user, user["id"])
+            
+        enqueued += 1
+        
+    return {"enqueued": enqueued, "queue_type": "gcp_tasks" if use_gcp else "background_tasks"}

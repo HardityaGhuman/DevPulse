@@ -1,9 +1,38 @@
 import pytest
 import respx
 import httpx
+from datetime import datetime, timedelta, timezone
 from app.clients import github
 
 GQL = "https://api.github.com/graphql"
+
+
+def _day(offset: int, count: int) -> dict:
+    """A calendar day `offset` days before today (UTC)."""
+    d = datetime.now(timezone.utc).date() - timedelta(days=offset)
+    return {"date": d.isoformat(), "contributionCount": count}
+
+
+def _weeks(days: list[dict]) -> list[dict]:
+    return [{"contributionDays": days}]
+
+
+def test_current_streak_counts_consecutive_days():
+    # today, yesterday, day-before all active -> 3
+    weeks = _weeks([_day(0, 8), _day(1, 9), _day(2, 3), _day(3, 0), _day(4, 5)])
+    assert github._current_streak(weeks) == 3
+
+
+def test_current_streak_empty_today_does_not_break_yesterday():
+    # today has 0 (not pushed yet) but yesterday+ are active -> streak survives
+    weeks = _weeks([_day(0, 0), _day(1, 9), _day(2, 4)])
+    assert github._current_streak(weeks) == 2
+
+
+def test_current_streak_ignores_future_padding_days():
+    # GitHub pads the current week with future zero-count days; they must not zero the streak
+    weeks = _weeks([_day(-2, 0), _day(-1, 0), _day(0, 5), _day(1, 4)])
+    assert github._current_streak(weeks) == 2
 
 
 @pytest.mark.asyncio
