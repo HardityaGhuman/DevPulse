@@ -146,13 +146,13 @@ export default function Dashboard() {
         const initRepos = s.tracked_repos || [];
         const initHour = s.digest_hour ?? 8;
         const initDay = s.digest_day || "monday";
-        const initTz = s.digest_timezone || BROWSER_TZ;
+        const dbTz = s.digest_timezone || "UTC";
         setFreq(initFreq);
         setSelected(new Set(initRepos));
         setHour(initHour);
         setDay(initDay);
-        setTz(initTz);
-        setSaved({ freq: initFreq, repos: initRepos, hour: initHour, day: initDay, tz: initTz });
+        setTz(BROWSER_TZ); // Always identify and use the exact current timezone
+        setSaved({ freq: initFreq, repos: initRepos, hour: initHour, day: initDay, tz: dbTz });
       }
       if (meRes.status === "rejected" && setRes.status === "rejected") {
         setError("Couldn't load your settings. Refresh to try again.");
