@@ -215,7 +215,7 @@ export default function LandingPage() {
       {/* 03 — CADENCE */}
       <Feature
         num="03" label="CADENCE"
-        heading="Your" accent="pace," tail="not the firehose."
+        heading="Your" accent="pace," tail="not the overload."
         lede="Choose delivery — off, every 6h, 12h, daily, or weekly. One composed email, delivered on your cadence."
         card={
           <MiniCard>
