@@ -83,14 +83,17 @@ const LANG_DOT = {
 
 function fmtDate(iso) {
   if (!iso) return "";
-  const d = new Date(iso);
+  // Ensure the timestamp is parsed as UTC if it lacks a timezone indicator, so it renders in local time
+  const timeStr = iso.endsWith("Z") || iso.includes("+") || iso.includes("-") && iso.lastIndexOf("-") > 10 ? iso : iso + "Z";
+  const d = new Date(timeStr);
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }).toUpperCase();
 }
 
 function fmtTime(iso) {
   if (!iso) return "";
-  const d = new Date(iso);
+  const timeStr = iso.endsWith("Z") || iso.includes("+") || iso.includes("-") && iso.lastIndexOf("-") > 10 ? iso : iso + "Z";
+  const d = new Date(timeStr);
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 }
