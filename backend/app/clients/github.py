@@ -91,7 +91,17 @@ async def fetch_contributions(username: str, token: str, since: str, until: str)
                   "variables": {"login": username, "from": since, "to": until}},
         )
         r.raise_for_status()
-        cc = (r.json().get("data", {}).get("user", {}) or {}).get("contributionsCollection", {})
+        body = r.json()
+        # GraphQL returns HTTP 200 even on query errors or a null user (bad login, missing
+        # token scope). Left unchecked, `user` is None -> every count defaults to 0 and we'd
+        # email an honest-looking "quiet day" that's actually a broken fetch. Fail loudly so
+        # the caller skips/retries this user instead of sending a misleading zero digest.
+        if body.get("errors"):
+            raise RuntimeError(f"GitHub GraphQL error for {username}: {body['errors']}")
+        user = (body.get("data") or {}).get("user")
+        if user is None:
+            raise RuntimeError(f"GitHub returned no user for '{username}' (bad login or token scope)")
+        cc = user.get("contributionsCollection", {})
 
         sr = await client.post(
             GRAPHQL,
@@ -196,7 +206,9 @@ query($q:String!) {
 async def fetch_merged_prs(username: str, token: str, since: str) -> dict:
     """PRs the user merged in the window — feeds "Shipped Today". Returns an honest count
     (`issueCount`, not the capped node list) plus title/repo/url for each."""
-    q = f"is:pr is:merged author:{username} merged:>={since[:10]} archived:false"
+    # Full ISO timestamp (not date-only) so a 6h/12h digest counts its actual interval, not
+    # the whole UTC day. GitHub search accepts `>=YYYY-MM-DDTHH:MM:SS+00:00`.
+    q = f"is:pr is:merged author:{username} merged:>={since} archived:false"
     async with httpx.AsyncClient(timeout=20) as client:
         r = await client.post(GRAPHQL, headers=_headers(token),
                               json={"query": _MERGED_QUERY, "variables": {"q": q}})
@@ -214,7 +226,8 @@ async def fetch_work_log(username: str, token: str, since: str) -> list[dict]:
     """Human-readable work log from commit headlines in the window — feeds "Today's Work".
     First line of each commit message only (no body); grouped by (repo, headline) with a
     count. Never AI-interpreted — the commit author's own words, verbatim."""
-    q = f"author:{username} committer-date:>={since[:10]}"
+    # Full ISO timestamp (see fetch_merged_prs) so sub-daily windows aren't widened to a day.
+    q = f"author:{username} committer-date:>={since}"
     async with httpx.AsyncClient(timeout=20) as client:
         r = await client.get(f"{REST}/search/commits", headers=_headers(token),
                              params={"q": q, "sort": "committer-date",

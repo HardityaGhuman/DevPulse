@@ -202,6 +202,22 @@ async def process_single_user(user_id: str) -> dict:
         logger.error("[digest] failed for %s: %s", user.get("email"), e, exc_info=True)
         raise
 
+
+async def _process_isolated(user_id: str) -> None:
+    """BackgroundTasks entrypoint — MUST NOT propagate.
+
+    Starlette runs background tasks sequentially in one coroutine; a raised exception aborts
+    every task queued after it. On the cron fan-out that means a single broken user (bad
+    token, GitHub error, LLM outage) would silently block every user ordered after them, on
+    every tick. Swallow here so each user is independent. The GCP Cloud Tasks path keeps the
+    raising `process_single_user` so a non-2xx triggers a per-user retry instead.
+    """
+    try:
+        await process_single_user(user_id)
+    except Exception:
+        pass  # already logged with traceback inside process_single_user
+
+
 def _enqueue_gcp_task(user_id: str, base_url: str):
     """Enqueue a task to GCP Cloud Tasks."""
     client = tasks_v2.CloudTasksClient()
@@ -245,9 +261,9 @@ async def run_all(background_tasks: BackgroundTasks, base_url: str) -> dict:
                 _enqueue_gcp_task(user["id"], base_url)
             except Exception as e:
                 logger.error("Failed to enqueue GCP task for %s: %s", user["id"], e)
-                background_tasks.add_task(process_single_user, user["id"])
+                background_tasks.add_task(_process_isolated, user["id"])
         else:
-            background_tasks.add_task(process_single_user, user["id"])
+            background_tasks.add_task(_process_isolated, user["id"])
             
         enqueued += 1
         

@@ -53,8 +53,38 @@ async def _complete(model: str, prompt: str) -> str:
     return resp["choices"][0]["message"]["content"]
 
 
+def _fallback_result(ctx: DigestContext) -> DigestResult:
+    """Deterministic facts-only digest for when every LLM is down.
+
+    The headline is the ONLY LLM-authored text in the email; if we can't get it we still owe
+    the user their facts, so we assemble a plain sentence from the counts rather than skip the
+    send entirely. Momentum leans on the period-over-period deltas we already computed.
+    """
+    parts = []
+    if ctx.commits:
+        parts.append(f"{ctx.commits} commit{'s' if ctx.commits != 1 else ''}")
+    if ctx.prs_merged:
+        parts.append(f"{ctx.prs_merged} PR{'s' if ctx.prs_merged != 1 else ''} merged")
+    if ctx.prs_opened:
+        parts.append(f"{ctx.prs_opened} PR{'s' if ctx.prs_opened != 1 else ''} opened")
+    if ctx.reviews:
+        parts.append(f"{ctx.reviews} review{'s' if ctx.reviews != 1 else ''}")
+    if parts:
+        headline = ", ".join(parts)
+        if len(ctx.repos_active) > 0:
+            headline += f" across {len(ctx.repos_active)} repo{'s' if len(ctx.repos_active) != 1 else ''}"
+        headline += "."
+    else:
+        headline = "A quiet period — no tracked activity."
+
+    net = sum(ctx.deltas.values()) if ctx.deltas else 0
+    momentum = "rising" if net > 0 else "declining" if net < 0 else "steady"
+    return DigestResult(headline=headline[:140], momentum=momentum)
+
+
 async def generate_digest(context: DigestContext) -> DigestResult:
-    """Try each model in _MODELS. Raise only if all fail (no half-baked digest)."""
+    """Try each model in _MODELS. If all fail, fall back to a deterministic facts-only
+    digest so the user still gets their email during an LLM outage (never a silent no-send)."""
     prompt = _build_prompt(context)
     for model in _MODELS:
         try:
@@ -62,4 +92,5 @@ async def generate_digest(context: DigestContext) -> DigestResult:
             return _parse(raw)
         except Exception as e:  # model error OR parse/validation failure -> next model
             logger.warning("[ai] model %s failed: %s", model, e)
-    raise RuntimeError("All LLM models failed to produce a valid digest")
+    logger.error("[ai] all models failed — using deterministic facts-only fallback")
+    return _fallback_result(context)
