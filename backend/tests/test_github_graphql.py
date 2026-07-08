@@ -83,6 +83,69 @@ async def test_streak_stops_at_first_zero_day():
 
 @pytest.mark.asyncio
 @respx.mock
+async def test_fetch_contributions_raises_on_null_user():
+    # Bad login / missing scope -> HTTP 200 with user:null. Must fail loud, not send zeros.
+    respx.post(GQL).mock(return_value=httpx.Response(200, json={"data": {"user": None}}))
+    with pytest.raises(RuntimeError):
+        await github.fetch_contributions("ghost", "tok", "2026-06-24T00:00:00+00:00",
+                                         "2026-07-01T00:00:00+00:00")
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_contributions_raises_on_graphql_errors():
+    respx.post(GQL).mock(return_value=httpx.Response(
+        200, json={"errors": [{"message": "Bad credentials"}], "data": {"user": None}}))
+    with pytest.raises(RuntimeError):
+        await github.fetch_contributions("me", "tok", "2026-06-24T00:00:00+00:00",
+                                         "2026-07-01T00:00:00+00:00")
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_contributions_scoped_to_tracked_repos():
+    # commits summed from per-repo breakdown for tracked repos only; prs/issues/reviews from
+    # repo-filtered search issueCount.
+    contrib = {"data": {"user": {"contributionsCollection": {
+        "totalCommitContributions": 99, "totalPullRequestContributions": 99,
+        "totalIssueContributions": 99, "totalPullRequestReviewContributions": 99,
+        "commitContributionsByRepository": [
+            {"repository": {"nameWithOwner": "me/app"}, "contributions": {"totalCount": 7}},
+            {"repository": {"nameWithOwner": "me/other"}, "contributions": {"totalCount": 40}},
+        ],
+        "contributionCalendar": {"weeks": []},
+    }}}}
+    streak = {"data": {"user": {"contributionsCollection": {
+        "contributionCalendar": {"weeks": []}}}}}
+    count = lambda n: {"data": {"search": {"issueCount": n}}}
+    route = respx.post(GQL)
+    # order: contrib, streak, prs_opened, issues_opened, reviews
+    route.side_effect = [httpx.Response(200, json=contrib), httpx.Response(200, json=streak),
+                         httpx.Response(200, json=count(2)), httpx.Response(200, json=count(1)),
+                         httpx.Response(200, json=count(3))]
+    out = await github.fetch_contributions("me", "tok", "2026-06-24T00:00:00+00:00",
+                                           "2026-07-01T00:00:00+00:00", tracked=["me/app"])
+    assert out["commits"] == 7                     # only me/app, not me/other's 40
+    assert out["repos_active"] == ["me/app"]       # me/other excluded
+    assert out["prs_opened"] == 2 and out["issues_opened"] == 1 and out["reviews"] == 3
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_merged_prs_adds_repo_filter():
+    captured = {}
+    def handler(request):
+        import json as _j
+        captured["q"] = _j.loads(request.content)["variables"]["q"]
+        return httpx.Response(200, json={"data": {"search": {"issueCount": 0, "nodes": []}}})
+    respx.post(GQL).mock(side_effect=handler)
+    await github.fetch_merged_prs("me", "tok", "2026-07-02T00:00:00+00:00",
+                                  tracked=["me/app", "me/lib"])
+    assert "repo:me/app" in captured["q"] and "repo:me/lib" in captured["q"]
+
+
+@pytest.mark.asyncio
+@respx.mock
 async def test_fetch_waiting_prs_enriched():
     def node(num, repo):
         return {"number": num, "title": f"PR {num}", "url": f"https://x/{num}",

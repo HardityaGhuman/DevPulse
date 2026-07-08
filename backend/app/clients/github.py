@@ -26,6 +26,7 @@ query($login:String!, $from:DateTime!, $to:DateTime!) {
       totalPullRequestReviewContributions
       commitContributionsByRepository(maxRepositories:25) {
         repository { nameWithOwner }
+        contributions { totalCount }
       }
       contributionCalendar {
         weeks { contributionDays { date contributionCount } }
@@ -57,6 +58,26 @@ def parse_iso(s: str) -> datetime:
     return datetime.fromisoformat(s.replace("Z", "+00:00"))
 
 
+_COUNT_QUERY = """
+query($q:String!) { search(query:$q, type:ISSUE) { issueCount } }
+"""
+
+
+def _repo_filter(repos: list[str] | None) -> str:
+    """GitHub search `repo:` qualifiers scoping a query to tracked repos (empty = whole account).
+    Repo slugs are validated owner/name on write (schemas.py), so they're safe to interpolate."""
+    return " ".join(f"repo:{r}" for r in (repos or []))
+
+
+async def _search_count(client: httpx.AsyncClient, token: str, q: str) -> int:
+    """Exact match count for a search query (issueCount, not the capped node list)."""
+    r = await client.post(GRAPHQL, headers=_headers(token),
+                          json={"query": _COUNT_QUERY, "variables": {"q": q}})
+    if r.status_code != 200:
+        return 0
+    return ((r.json().get("data", {}).get("search", {}) or {}).get("issueCount", 0)) or 0
+
+
 def _current_streak(weeks: list[dict]) -> int:
     """Consecutive most-recent days with any contribution.
 
@@ -79,8 +100,14 @@ def _current_streak(weeks: list[dict]) -> int:
     return streak
 
 
-async def fetch_contributions(username: str, token: str, since: str, until: str) -> dict:
-    """Fetch accurate contribution counts + streak for the period."""
+async def fetch_contributions(username: str, token: str, since: str, until: str,
+                              tracked: list[str] | None = None) -> dict:
+    """Fetch accurate contribution counts + streak for the period.
+
+    If `tracked` is given, top-line counts are scoped to those repos: commits from the
+    per-repo commit breakdown, and opened-PR / issue / review counts from repo-filtered
+    search (exact issueCount). Streak stays account-wide — a per-repo streak isn't meaningful.
+    """
     # Streak needs a wider lookback than the digest window; clamp `from` to <= now.
     streak_from = (datetime.now(timezone.utc) - timedelta(days=_STREAK_WINDOW_DAYS)).isoformat()
     async with httpx.AsyncClient(timeout=20) as client:
@@ -98,10 +125,10 @@ async def fetch_contributions(username: str, token: str, since: str, until: str)
         # the caller skips/retries this user instead of sending a misleading zero digest.
         if body.get("errors"):
             raise RuntimeError(f"GitHub GraphQL error for {username}: {body['errors']}")
-        user = (body.get("data") or {}).get("user")
-        if user is None:
+        gh_user = (body.get("data") or {}).get("user")
+        if gh_user is None:
             raise RuntimeError(f"GitHub returned no user for '{username}' (bad login or token scope)")
-        cc = user.get("contributionsCollection", {})
+        cc = gh_user.get("contributionsCollection", {})
 
         sr = await client.post(
             GRAPHQL,
@@ -112,13 +139,31 @@ async def fetch_contributions(username: str, token: str, since: str, until: str)
         streak_cc = ((sr.json().get("data", {}).get("user", {}) or {})
                      .get("contributionsCollection", {}) if sr.status_code == 200 else {})
 
-    repos = [x["repository"]["nameWithOwner"]
-             for x in cc.get("commitContributionsByRepository", [])]
-    weeks = streak_cc.get("contributionCalendar", {}).get("weeks", [])
-    commits = cc.get("totalCommitContributions", 0)
-    prs = cc.get("totalPullRequestContributions", 0)
-    issues = cc.get("totalIssueContributions", 0)
-    reviews = cc.get("totalPullRequestReviewContributions", 0)
+        by_repo = cc.get("commitContributionsByRepository", [])
+        weeks = streak_cc.get("contributionCalendar", {}).get("weeks", [])
+
+        if tracked:
+            tset = set(tracked)
+            rf = _repo_filter(tracked)
+            repos = [x["repository"]["nameWithOwner"] for x in by_repo
+                     if x["repository"]["nameWithOwner"] in tset]
+            commits = sum(x.get("contributions", {}).get("totalCount", 0)
+                          for x in by_repo if x["repository"]["nameWithOwner"] in tset)
+            prs = await _search_count(
+                client, token, f"is:pr author:{username} created:>={since} archived:false {rf}")
+            issues = await _search_count(
+                client, token, f"is:issue author:{username} created:>={since} archived:false {rf}")
+            # GitHub search has no "reviewed-on" date qualifier; approximate the window with
+            # `updated:` — close enough for the secondary reviews stat.
+            reviews = await _search_count(
+                client, token, f"is:pr reviewed-by:{username} updated:>={since} archived:false {rf}")
+        else:
+            repos = [x["repository"]["nameWithOwner"] for x in by_repo]
+            commits = cc.get("totalCommitContributions", 0)
+            prs = cc.get("totalPullRequestContributions", 0)
+            issues = cc.get("totalIssueContributions", 0)
+            reviews = cc.get("totalPullRequestReviewContributions", 0)
+
     return {
         "commits": commits,
         "prs_opened": prs,
@@ -170,14 +215,16 @@ async def _search_prs(client: httpx.AsyncClient, token: str, q: str, reason: str
     return out
 
 
-async def fetch_waiting_prs(username: str, token: str) -> list[dict]:
-    """Open PRs requesting the user's review OR authored by them. Review-requested first."""
+async def fetch_waiting_prs(username: str, token: str, tracked: list[str] | None = None) -> list[dict]:
+    """Open PRs requesting the user's review OR authored by them. Review-requested first.
+    Scoped to `tracked` repos when set."""
+    rf = _repo_filter(tracked)
     async with httpx.AsyncClient(timeout=20) as client:
         review = await _search_prs(
-            client, token, f"is:open is:pr review-requested:{username} archived:false",
+            client, token, f"is:open is:pr review-requested:{username} archived:false {rf}".strip(),
             "review_requested")
         authored = await _search_prs(
-            client, token, f"is:open is:pr author:{username} archived:false", "yours")
+            client, token, f"is:open is:pr author:{username} archived:false {rf}".strip(), "yours")
     seen, merged = set(), []
     for pr in review + authored:       # review-requested takes priority on dupes
         if pr["url"] in seen:
@@ -203,12 +250,14 @@ query($q:String!) {
 """
 
 
-async def fetch_merged_prs(username: str, token: str, since: str) -> dict:
+async def fetch_merged_prs(username: str, token: str, since: str,
+                           tracked: list[str] | None = None) -> dict:
     """PRs the user merged in the window — feeds "Shipped Today". Returns an honest count
-    (`issueCount`, not the capped node list) plus title/repo/url for each."""
+    (`issueCount`, not the capped node list) plus title/repo/url for each. Scoped to
+    `tracked` repos when set."""
     # Full ISO timestamp (not date-only) so a 6h/12h digest counts its actual interval, not
     # the whole UTC day. GitHub search accepts `>=YYYY-MM-DDTHH:MM:SS+00:00`.
-    q = f"is:pr is:merged author:{username} merged:>={since} archived:false"
+    q = f"is:pr is:merged author:{username} merged:>={since} archived:false {_repo_filter(tracked)}".strip()
     async with httpx.AsyncClient(timeout=20) as client:
         r = await client.post(GRAPHQL, headers=_headers(token),
                               json={"query": _MERGED_QUERY, "variables": {"q": q}})
@@ -222,12 +271,14 @@ async def fetch_merged_prs(username: str, token: str, since: str) -> dict:
     return {"count": search.get("issueCount", len(prs)), "prs": prs}
 
 
-async def fetch_work_log(username: str, token: str, since: str) -> list[dict]:
+async def fetch_work_log(username: str, token: str, since: str,
+                         tracked: list[str] | None = None) -> list[dict]:
     """Human-readable work log from commit headlines in the window — feeds "Today's Work".
     First line of each commit message only (no body); grouped by (repo, headline) with a
-    count. Never AI-interpreted — the commit author's own words, verbatim."""
+    count. Never AI-interpreted — the commit author's own words, verbatim. Scoped to
+    `tracked` repos when set."""
     # Full ISO timestamp (see fetch_merged_prs) so sub-daily windows aren't widened to a day.
-    q = f"author:{username} committer-date:>={since}"
+    q = f"author:{username} committer-date:>={since} {_repo_filter(tracked)}".strip()
     async with httpx.AsyncClient(timeout=20) as client:
         r = await client.get(f"{REST}/search/commits", headers=_headers(token),
                              params={"q": q, "sort": "committer-date",

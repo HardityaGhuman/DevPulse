@@ -101,10 +101,14 @@ async def build_context(user: dict, period_start: str, period_end: str) -> Diges
     if not username or not token:
         raise ValueError("Missing GitHub credentials for user")
 
-    contrib = await github.fetch_contributions(username, token, period_start, period_end)
-    waiting = await github.fetch_waiting_prs(username, token)
-    merged = await github.fetch_merged_prs(username, token, period_start)
-    work = await github.fetch_work_log(username, token, period_start)
+    # Scope the whole digest to the user's tracked repos when they've picked any; empty/None
+    # means whole-account (default). GitHub's contributions API can't repo-filter its totals,
+    # so the client re-derives scoped counts via search — see fetch_contributions.
+    tracked = user.get("tracked_repos") or None
+    contrib = await github.fetch_contributions(username, token, period_start, period_end, tracked=tracked)
+    waiting = await github.fetch_waiting_prs(username, token, tracked=tracked)
+    merged = await github.fetch_merged_prs(username, token, period_start, tracked=tracked)
+    work = await github.fetch_work_log(username, token, period_start, tracked=tracked)
 
     # contributionsCollection can't report merged PRs — override its placeholder 0 with the
     # honest search count so the "Shipped" stat and its delta are real.
