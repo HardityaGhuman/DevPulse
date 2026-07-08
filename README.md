@@ -159,10 +159,6 @@ frontend/         React + Vite SPA (next up for a UI pass)
 
 ## Status & Next Steps
 
-Backend + auth are refactored, secured, and deployed on Cloud Run. Digest frequency
-is interval-based (`off / 6h / 12h / daily / weekly`); a single cron fans out to
-whoever's due. **Next phase: the frontend** — a public demo: a landing page + a
-signed-in dashboard for frequency preferences, both showcasing a **static sample
-digest** (the real digest only arrives by email — no live in-app preview). The current
-frontend is a basic scaffold, due for a redesign.
+Backend + auth are refactored, secured, and deployed on Cloud Run via automated GitHub Actions CD. We have comprehensive test coverage for core services, structured logging, and observability metrics in place. Digest frequency is interval-based (`off / 6h / 12h / daily / weekly`); a single cron fans out to whoever's due, with support for Google Cloud Tasks queueing.
 
+**Next phase: Host this service so that other users can access freely** 
