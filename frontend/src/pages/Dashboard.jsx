@@ -81,19 +81,25 @@ const LANG_DOT = {
   Shell: "#89e051", HTML: "#e34c26", CSS: "#563d7c", Swift: "#F05138", Kotlin: "#A97BFF",
 };
 
+// Backend timestamps may be naive (no tz suffix). Treat those as UTC so they render in the
+// viewer's local time; honor an explicit designator when present. Only the time part (after
+// "T") is inspected, so the date's own dashes never read as a tz offset.
+function parseIso(iso) {
+  const timePart = iso.slice(iso.indexOf("T"));
+  const hasTz = /Z$|[+-]\d\d:?\d\d$/.test(timePart);
+  return new Date(hasTz ? iso : iso + "Z");
+}
+
 function fmtDate(iso) {
   if (!iso) return "";
-  // Ensure the timestamp is parsed as UTC if it lacks a timezone indicator, so it renders in local time
-  const timeStr = iso.endsWith("Z") || iso.includes("+") || iso.includes("-") && iso.lastIndexOf("-") > 10 ? iso : iso + "Z";
-  const d = new Date(timeStr);
+  const d = parseIso(iso);
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }).toUpperCase();
 }
 
 function fmtTime(iso) {
   if (!iso) return "";
-  const timeStr = iso.endsWith("Z") || iso.includes("+") || iso.includes("-") && iso.lastIndexOf("-") > 10 ? iso : iso + "Z";
-  const d = new Date(timeStr);
+  const d = parseIso(iso);
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 }
@@ -146,13 +152,16 @@ export default function Dashboard() {
         const initRepos = s.tracked_repos || [];
         const initHour = s.digest_hour ?? 8;
         const initDay = s.digest_day || "monday";
-        const dbTz = s.digest_timezone || "UTC";
+        // Respect the user's stored timezone; only default to the browser's for a fresh
+        // account that has never saved one. Display and baseline stay in sync so the page
+        // doesn't open dirty.
+        const initTz = s.digest_timezone || BROWSER_TZ;
         setFreq(initFreq);
         setSelected(new Set(initRepos));
         setHour(initHour);
         setDay(initDay);
-        setTz(BROWSER_TZ); // Always identify and use the exact current timezone
-        setSaved({ freq: initFreq, repos: initRepos, hour: initHour, day: initDay, tz: dbTz });
+        setTz(initTz);
+        setSaved({ freq: initFreq, repos: initRepos, hour: initHour, day: initDay, tz: initTz });
       }
       if (meRes.status === "rejected" && setRes.status === "rejected") {
         setError("Couldn't load your settings. Refresh to try again.");

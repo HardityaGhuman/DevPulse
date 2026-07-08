@@ -39,19 +39,27 @@ from app.schemas import DigestResult, DigestContext
 logger = logging.getLogger("devpulse.email")
 
 # Delivery-time display. The digest can go out at any interval (6h/12h/daily/weekly), so the
-# masthead + mac-card clock show the ACTUAL send time, not a fixed 8:00. IST = the tool owner's tz.
-_TZ = ZoneInfo("Asia/Kolkata")
+# masthead + mac-card clock show the ACTUAL send time, not a fixed 8:00. Rendered in the
+# recipient's own digest_timezone (falls back to IST, the default tool owner's tz).
+_DEFAULT_TZ = ZoneInfo("Asia/Kolkata")
 
 
-def _delivery_time() -> str:
+def _resolve_tz(timezone: str | None) -> ZoneInfo:
+    try:
+        return ZoneInfo(timezone) if timezone else _DEFAULT_TZ
+    except Exception:
+        return _DEFAULT_TZ
+
+
+def _delivery_time(tz: ZoneInfo = _DEFAULT_TZ) -> str:
     """Current wall-clock at render (= send time), e.g. '2:35 PM'."""
-    return datetime.now(_TZ).strftime("%-I:%M %p")
+    return datetime.now(tz).strftime("%-I:%M %p")
 
 
-def _delivery_date() -> str:
+def _delivery_date(tz: ZoneInfo = _DEFAULT_TZ) -> str:
     """Today's date at send, e.g. 'JUL 04, 2026' — the masthead dateline (a publication date,
     not the digest's period boundary, so it stays in step with _delivery_time)."""
-    return datetime.now(_TZ).strftime("%b %d, %Y").upper()
+    return datetime.now(tz).strftime("%b %d, %Y").upper()
 
 
 def _esc(text: str) -> str:
@@ -153,7 +161,7 @@ def _summary_facts(context: DigestContext) -> str:
             f'margin:0;">{attn}</p>')
 
 
-def _mac_card(context: DigestContext) -> str:
+def _mac_card(context: DigestContext, tz: ZoneInfo = _DEFAULT_TZ) -> str:
     """Light 'inbox preview' panel — white card / dark text, an app screenshot on the sheet."""
     if context.waiting_prs:
         pr = context.waiting_prs[0]
@@ -188,7 +196,7 @@ def _mac_card(context: DigestContext) -> str:
             <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background-color:#FFBD2E;margin-left:6px;"></span>
             <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background-color:#27C93F;margin-left:6px;"></span>
           </td>
-          <td align="right" style="font-family:{_MONO};font-size:8px;letter-spacing:0.1em;color:{_MUTED};">INBOX &middot; {_delivery_time()}</td>
+          <td align="right" style="font-family:{_MONO};font-size:8px;letter-spacing:0.1em;color:{_MUTED};">INBOX &middot; {_delivery_time(tz)}</td>
         </tr></table>
       </div>
       <div style="padding:16px;">
@@ -199,7 +207,8 @@ def _mac_card(context: DigestContext) -> str:
     </div>"""
 
 
-def _section_summary(digest: DigestResult, context: DigestContext) -> str:
+def _section_summary(digest: DigestResult, context: DigestContext,
+                     tz: ZoneInfo = _DEFAULT_TZ) -> str:
     headline = _emphasize_headline(digest.headline, context)
     return f"""
     <table width="100%" role="presentation" cellpadding="0" cellspacing="0"><tr>
@@ -208,7 +217,7 @@ def _section_summary(digest: DigestResult, context: DigestContext) -> str:
         <p style="font-family:{_SANS};font-size:22px;line-height:1.25;font-weight:400;color:{_INK};margin:0 0 24px;">{headline}</p>
         {_summary_facts(context)}
       </td>
-      <td valign="top" width="44%">{_mac_card(context)}</td>
+      <td valign="top" width="44%">{_mac_card(context, tz)}</td>
     </tr></table>"""
 
 
@@ -397,7 +406,8 @@ def _footer() -> str:
 
 
 def _build_digest_html(digest: DigestResult, context: DigestContext,
-                       period_start: str, period_end: str) -> str:
+                       period_start: str, period_end: str,
+                       tz: ZoneInfo = _DEFAULT_TZ) -> str:
     masthead = f"""
     <table width="100%" role="presentation" cellpadding="0" cellspacing="0">
       <tr>
@@ -414,7 +424,7 @@ def _build_digest_html(digest: DigestResult, context: DigestContext,
           <div style="font-family:{_MONO};font-size:9px;font-weight:500;color:{_MUTED};letter-spacing:0.05em;white-space:nowrap;margin-top:2px;">BUILT ON YOUR GITHUB</div>
         </td>
         <td valign="top" align="right" style="padding-top:4px;white-space:nowrap;">
-          <div style="font-family:{_MONO};font-size:10px;font-weight:500;color:{_MUTED};letter-spacing:0.05em;">{_delivery_date()} &middot; {_delivery_time()}</div>
+          <div style="font-family:{_MONO};font-size:10px;font-weight:500;color:{_MUTED};letter-spacing:0.05em;">{_delivery_date(tz)} &middot; {_delivery_time(tz)}</div>
         </td>
       </tr>
     </table>"""
@@ -428,7 +438,7 @@ def _build_digest_html(digest: DigestResult, context: DigestContext,
       <div style="padding:32px 32px 16px;">{masthead}</div>
       <div style="margin:0 32px;">{_rule()}</div>
       <div style="padding:40px 32px;">
-      {_section_summary(digest, context)}{gap}
+      {_section_summary(digest, context, tz)}{gap}
       {_section_shipped(context)}{gap}
       {_section_wip_attention(context)}{gap}
       {_section_work_log(context)}{gap}
@@ -463,15 +473,21 @@ def _build_digest_html(digest: DigestResult, context: DigestContext,
 
 
 async def send_digest_email(to: str, subject: str, digest: DigestResult,
-                            context: DigestContext, period_start: str, period_end: str) -> bool:
-    """Send a digest email via Resend. Returns True on success, False on failure."""
+                            context: DigestContext, period_start: str, period_end: str,
+                            timezone: str | None = None) -> bool:
+    """Send a digest email via Resend. Returns True on success, False on failure.
+
+    `timezone` is the recipient's IANA tz (their saved digest_timezone); the masthead/card
+    delivery clock renders in it. Falls back to IST when unset/invalid.
+    """
+    tz = _resolve_tz(timezone)
     try:
         resend.api_key = settings.resend_api_key
         payload = {
             "from": settings.email_from,
             "to": [to],
             "subject": subject,
-            "html": _build_digest_html(digest, context, period_start, period_end),
+            "html": _build_digest_html(digest, context, period_start, period_end, tz),
         }
         if settings.email_reply_to:
             payload["reply_to"] = settings.email_reply_to

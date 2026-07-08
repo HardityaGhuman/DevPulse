@@ -171,6 +171,7 @@ async def generate_and_deliver(user: dict) -> dict:
     sent = await send_digest_email(
         to=user["email"], subject=subject, digest=result, context=context,
         period_start=context.period_start, period_end=context.period_end,
+        timezone=user.get("digest_timezone"),
     )
 
     now = datetime.now(timezone.utc)
