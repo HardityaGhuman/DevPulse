@@ -272,8 +272,13 @@ def _enqueue_gcp_task(user_id: str, base_url: str):
     parent = client.queue_path(project, location, queue)
     
     secret = os.environ.get("INTERNAL_CRON_SECRET", "")
+    # Cloud Run terminates TLS at its proxy, so request.base_url comes back as http://. If the
+    # task targets http://, Cloud Run 302-redirects to https and that redirect DOWNGRADES the
+    # POST to a GET -> our POST-only worker returns 405 and the digest never runs. Force https.
     url = f"{base_url}/internal/digest/{user_id}"
-    
+    if url.startswith("http://"):
+        url = "https://" + url[len("http://"):]
+
     task = {
         "http_request": {
             "http_method": tasks_v2.HttpMethod.POST,
