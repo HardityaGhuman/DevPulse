@@ -5,6 +5,7 @@ Scheduling runs externally (Google Cloud Scheduler -> POST /internal/run-digests
 app carries no in-process scheduler — it stays stateless and Cloud Run can scale to zero.
 """
 
+import os
 import logging
 import structlog
 from fastapi import FastAPI
@@ -42,8 +43,12 @@ app = FastAPI(
     version="2.0.0",
 )
 
-# Prometheus metrics
-Instrumentator().instrument(app).expose(app)
+# Prometheus metrics. Always instrument; only expose the public /metrics endpoint when
+# explicitly enabled — it leaks route names + traffic/latency timing, so it stays off in the
+# public prod deploy unless a private scraper needs it (EXPOSE_METRICS=true).
+_instrumentator = Instrumentator().instrument(app)
+if os.environ.get("EXPOSE_METRICS", "false").lower() == "true":
+    _instrumentator.expose(app)
 
 # Rate limiting
 app.state.limiter = limiter

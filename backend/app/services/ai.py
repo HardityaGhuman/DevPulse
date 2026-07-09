@@ -9,13 +9,14 @@ a model that errors OR returns unparseable/invalid JSON falls through to the nex
 
 import json
 import logging
+import re
 import litellm
 from app.schemas import DigestContext, DigestResult
 
 logger = logging.getLogger("devpulse.ai")
 
 # Ordered: primary first, fallback(s) after. Any LiteLLM-supported model id works.
-_MODELS = ["gemini/gemini-2.5-flash", "groq/openai/gpt-oss-120b"]  
+_MODELS = ["gemini/gemini-2.5-flash", "groq/openai/gpt-oss-20b", "groq/Qwen/Qwen3-32B"]  
 
 # ── PTCF prompt ────────────────────────────────────────────────
 _PERSONA = ("You are a senior developer coach reviewing a peer's week of GitHub activity. "
@@ -35,8 +36,10 @@ def _build_prompt(ctx: DigestContext) -> str:
 
 
 def _parse(text: str) -> DigestResult:
-    """Strict parse -> validate. Strips markdown fences if a model adds them."""
-    cleaned = text.strip()
+    """Strict parse -> validate. Tolerates two things some models prepend even in JSON mode:
+    a `<think>...</think>` reasoning block (Qwen3 and other reasoning models emit one, which
+    would otherwise fail validation and waste the fallback call) and markdown code fences."""
+    cleaned = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
     if cleaned.startswith("```"):
         cleaned = cleaned.split("```", 2)[1].removeprefix("json").strip()
     return DigestResult.model_validate_json(cleaned)

@@ -19,6 +19,31 @@ def _u(**kw):
     return {"digest_frequency": kw.pop("freq", "6h"), **kw}
 
 
+# ── period key: idempotency / interval-aware identity ──
+def test_period_key_6h_distinct_windows_same_retry():
+    u = _u(freq="6h", digest_timezone="UTC")
+    k0 = d._period_key(u, datetime(2026, 7, 9, 3, 0, tzinfo=timezone.utc))    # window 0 (00-05)
+    k1 = d._period_key(u, datetime(2026, 7, 9, 9, 0, tzinfo=timezone.utc))    # window 1 (06-11)
+    retry = d._period_key(u, datetime(2026, 7, 9, 4, 30, tzinfo=timezone.utc))  # retry of window 0
+    assert k0 != k1              # different 6h windows -> different rows
+    assert k0 == retry           # a retry inside the window is idempotent
+
+
+def test_period_key_daily_and_weekly_stable_within_window():
+    daily = _u(freq="daily", digest_timezone="UTC")
+    d0 = d._period_key(daily, datetime(2026, 7, 9, 1, 0, tzinfo=timezone.utc))
+    d1 = d._period_key(daily, datetime(2026, 7, 9, 23, 0, tzinfo=timezone.utc))
+    assert d0 == d1 == "daily:2026-07-09"
+    weekly = _u(freq="weekly", digest_timezone="UTC")
+    assert d._period_key(weekly, datetime(2026, 7, 9, 8, 0, tzinfo=timezone.utc)).startswith("weekly:2026-W")
+
+
+def test_period_key_uses_user_timezone():
+    # 2026-07-09 02:00 UTC is still 2026-07-08 in US/Pacific -> key must reflect local date
+    u = _u(freq="daily", digest_timezone="America/Los_Angeles")
+    assert d._period_key(u, datetime(2026, 7, 9, 2, 0, tzinfo=timezone.utc)) == "daily:2026-07-08"
+
+
 # ── interval frequencies (time-of-day doesn't apply) ──
 def test_is_due_never_sent():
     assert d._is_due(_u(freq="6h"), None, NOW) is True

@@ -23,7 +23,8 @@ async def test_falls_back_to_next_model_when_primary_fails(monkeypatch):
     result = await ai.generate_digest(CTX)
     assert isinstance(result, DigestResult)
     assert result.momentum == "rising"
-    assert calls == ai._MODELS  # tried primary then fallback
+    # stops at the first model that succeeds: primary failed, second returned valid JSON
+    assert calls == ai._MODELS[:2]
 
 
 @pytest.mark.asyncio

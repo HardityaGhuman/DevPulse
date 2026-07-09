@@ -83,6 +83,30 @@ def _is_due(user: dict, last: datetime | None, now: datetime) -> bool:
     return last is None or last.astimezone(tz).date() < local.date()
 
 
+def _period_key(user: dict, now: datetime) -> str:
+    """Stable identity for the current digest window: distinct per window, identical across
+    retries within it.
+
+    Backs both idempotent delivery (a Cloud Tasks retry after a successful send finds the same
+    key already marked sent and skips) and interval-aware history — a 6h digest gets 4 keys a
+    day, 12h two, daily one, weekly one — replacing the old date-only key that collided for
+    sub-daily cadences. Bucketed in the user's own timezone so it aligns with `_is_due`.
+    """
+    freq = user.get("digest_frequency") or "daily"
+    try:
+        tz = ZoneInfo(user.get("digest_timezone") or "UTC")
+    except Exception:
+        tz = ZoneInfo("UTC")
+    local = now.astimezone(tz)
+    if freq in ("6h", "12h"):
+        block = local.hour // _INTERVAL_HOURS[freq]
+        return f"{freq}:{local.date().isoformat()}:{block}"
+    if freq == "weekly":
+        iso = local.isocalendar()
+        return f"weekly:{iso[0]}-W{iso[1]:02d}"
+    return f"daily:{local.date().isoformat()}"
+
+
 def _cache_fresh(cached_at: datetime | None, now: datetime) -> bool:
     return cached_at is not None and (now - cached_at) < _CACHE_TTL
 
@@ -152,19 +176,32 @@ async def get_or_build_digest(user: dict, force: bool = False):
 
 
 async def generate_and_deliver(user: dict) -> dict:
-    """Generate (fresh) -> persist history -> email -> stamp last_digest_at."""
-    result, context = await get_or_build_digest(user, force=True)
+    """Generate (fresh) -> persist history -> email -> stamp last_digest_at.
+
+    Idempotent per digest window: Cloud Tasks delivers at-least-once, so if a prior attempt for
+    THIS window already recorded a successful send, a retry skips instead of double-emailing.
+    """
     supabase = get_supabase()
+    now = datetime.now(timezone.utc)
+    period_key = _period_key(user, now)
+
+    prior = (supabase.table("digests").select("email_sent_at")
+             .eq("user_id", user["id"]).eq("period_key", period_key).limit(1).execute())
+    if prior.data and prior.data[0].get("email_sent_at"):
+        return {"skipped": "already_sent", "period_key": period_key, "email_sent": True}
+
+    result, context = await get_or_build_digest(user, force=True)
 
     summary_blob = {"headline": result.headline, "momentum": result.momentum,
                     "context": context.model_dump()}
     supabase.table("digests").upsert({
         "user_id": user["id"],
+        "period_key": period_key,
         "period_start": context.period_start,
         "period_end": context.period_end,
         "activity_data": context.model_dump(),
         "ai_summary": json.dumps(summary_blob),
-    }, on_conflict="user_id,period_end").execute()
+    }, on_conflict="user_id,period_key").execute()
 
     # Subject leads with the AI headline: unique every run, so Gmail treats each digest as its
     # own message instead of threading same-subject sends and trimming the repeats behind "…".
@@ -178,12 +215,12 @@ async def generate_and_deliver(user: dict) -> dict:
         timezone=user.get("digest_timezone"),
     )
 
-    now = datetime.now(timezone.utc)
+    stamp = datetime.now(timezone.utc)
     if sent:
-        supabase.table("digests").update({"email_sent_at": now.isoformat()}) \
-            .eq("user_id", user["id"]).eq("period_end", context.period_end).execute()
+        supabase.table("digests").update({"email_sent_at": stamp.isoformat()}) \
+            .eq("user_id", user["id"]).eq("period_key", period_key).execute()
     # Stamp regardless of delivery so undeliverable users don't regenerate every cron tick.
-    supabase.table("users").update({"last_digest_at": now.isoformat()}) \
+    supabase.table("users").update({"last_digest_at": stamp.isoformat()}) \
         .eq("id", user["id"]).execute()
 
     return {"digest": result.model_dump(), "email_sent": sent,
