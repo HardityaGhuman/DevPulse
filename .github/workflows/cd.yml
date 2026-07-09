@@ -38,5 +38,5 @@ jobs:
           --source . \
           --region asia-south1 \
           --allow-unauthenticated \
-          --max-instances 2
+          --max-instances 10
         # Note: replace `asia-south1` with your actual region if different.
