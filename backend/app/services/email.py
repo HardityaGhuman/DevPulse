@@ -526,6 +526,7 @@ def _build_digest_html(digest: DigestResult, context: DigestContext,
 </style>
 </head>
 <body bgcolor="{_BG}" style="margin:0;padding:40px 16px;background-color:{_BG};">
+<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:{_BG};opacity:0;">{_esc(digest.headline)}</div>
 {body}
 </body>
 </html>"""

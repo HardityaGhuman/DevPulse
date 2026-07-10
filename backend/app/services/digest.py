@@ -230,12 +230,22 @@ async def generate_and_deliver(user: dict) -> dict:
         "ai_summary": json.dumps(summary_blob),
     }, on_conflict="user_id,period_key").execute()
 
-    # Subject leads with the AI headline: unique every run, so Gmail treats each digest as its
-    # own message instead of threading same-subject sends and trimming the repeats behind "…".
-    head = " ".join(result.headline.split()).strip()  # collapse any stray whitespace/newlines
-    if len(head) > 90:
-        head = head[:89].rstrip() + "…"
-    subject = f"DevPulse · {head}" if head else f"DevPulse · Daily brief · {context.period_end}"
+    # Short, stable subject. A full-sentence subject (the old behavior) reads as a spam pattern
+    # and hurts deliverability; the AI headline now rides the email preheader instead. Still
+    # distinct per window — date for daily/weekly, plus the send clock for sub-daily cadences —
+    # so Gmail doesn't collapse separate sends into one thread.
+    freq = user.get("digest_frequency") or "daily"
+    try:
+        subj_tz = ZoneInfo(user.get("digest_timezone") or "UTC")
+    except Exception:
+        subj_tz = ZoneInfo("UTC")
+    local = now.astimezone(subj_tz)
+    nice_date = f"{local:%b} {local.day}"                 # e.g. "Jul 10" (no zero-pad, portable)
+    label = {"daily": "Daily Brief", "weekly": "Weekly Brief"}.get(freq, "Brief")
+    if freq in ("6h", "12h"):
+        subject = f"DevPulse · {label} · {nice_date} · {local:%H:%M}"
+    else:
+        subject = f"DevPulse · {label} · {nice_date}"
     sent = await send_digest_email(
         to=user["email"], subject=subject, digest=result, context=context,
         period_start=context.period_start, period_end=context.period_end,
