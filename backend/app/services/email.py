@@ -19,9 +19,10 @@ The sheet is paper-white (#FFFFFF) framed by a darker border + drop shadow for a
 the mac-window preview card uses a subtle tint (#F9F9F8) so it still reads as a card on the
 white sheet — an app screenshot with dark text.
 
-Icons are monochrome Unicode text-glyphs (U+FE0E variation selector) on the meaning-carrying
-sections only: AI Summary (✦), Work in Progress (<>), Needs Attention (⚠︎), card lightning.
-No webfont icons (clients don't load them) and no color emoji.
+Icons are monochrome text-glyphs on the meaning-carrying sections only: AI Summary (✦),
+Work in Progress (<>), Needs Attention ([!]), card lightning (⚡︎). No webfont icons (clients
+don't load them) and no color emoji — the attention marker is a bracketed bang, not ⚠, because
+the warning triangle renders as a color emoji in many clients and breaks the monochrome look.
 
 Section order mirrors the digest spec: 1 AI Summary · 2 Shipped · 3 Work in progress ·
 4 Needs attention · 5 Today's work · 6 Last 7 days.
@@ -97,7 +98,8 @@ _CARD_BG = "#F9F9F8"     # mac-window panel (subtle tint so it reads as a card o
 
 # Monochrome text-glyphs (U+FE0E forces text, not emoji, presentation).
 _ICON_AI = "&#10022;"                 # ✦ four-pointed star (auto_awesome)
-_ICON_ATTN = "&#9888;&#65038;"        # ⚠︎ warning triangle, text-presentation
+_ICON_ATTN = "[!]"                     # bracketed bang — pairs with <>; NO emoji (⚠ renders as
+                                      # a color emoji glyph in many clients, breaking the mono look)
 _ICON_BOLT = "&#9889;&#65038;"        # ⚡︎ lightning, text-presentation
 _ICON_CODE = "&lt;&gt;"               # <> (code)
 
@@ -367,6 +369,15 @@ _MOMENTUM_PHRASE = {
 
 
 def _section_stats(context: DigestContext, momentum: str) -> str:
+    # Fixed trailing-7-day counts (context.week_stats) — NOT the digest window — so this strip
+    # is honestly "Last 7 Days" at every cadence. Falls back to window counts for any older
+    # cached context that predates week_stats. Streak stays streak_days (its own 365-day run).
+    w = context.week_stats or {}
+    prs_opened = w.get("prs_opened", context.prs_opened)
+    prs_merged = w.get("prs_merged", context.prs_merged)
+    reviews = w.get("reviews", context.reviews)
+    issues_opened = w.get("issues_opened", context.issues_opened)
+    repos_active = w.get("repos_active", len(context.repos_active))
     # Streak is the accent column: orange numeral + full orange label.
     streak_label = f'<span style="color:{_STREAK};">DAY STREAK</span>'
     phrase = _MOMENTUM_PHRASE.get(momentum, _MOMENTUM_PHRASE["steady"])
@@ -374,11 +385,11 @@ def _section_stats(context: DigestContext, momentum: str) -> str:
                f'margin:8px 0 0;">{phrase}</p>')
     strip = (
         f'<table width="100%" role="presentation" cellpadding="0" cellspacing="0" style="table-layout:fixed;"><tr>'
-        f'{_stat("PRS OPENED", context.prs_opened)}'
-        f'{_stat("PRS MERGED", context.prs_merged)}'
-        f'{_stat("REVIEWS GIVEN", context.reviews)}'
-        f'{_stat("ISSUES OPENED", context.issues_opened)}'
-        f'{_stat("REPOS ACTIVE", len(context.repos_active))}'
+        f'{_stat("PRS OPENED", prs_opened)}'
+        f'{_stat("PRS MERGED", prs_merged)}'
+        f'{_stat("REVIEWS GIVEN", reviews)}'
+        f'{_stat("ISSUES OPENED", issues_opened)}'
+        f'{_stat("REPOS ACTIVE", repos_active)}'
         f'{_stat(streak_label, context.streak_days, value_color=_STREAK)}'
         f'</tr></table>')
     return f'{_label("6", "Last 7 Days")}{caption}{_rule()}<div style="padding-top:32px;">{strip}</div>'

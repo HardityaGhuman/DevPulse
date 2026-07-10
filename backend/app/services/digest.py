@@ -140,6 +140,18 @@ async def build_context(user: dict, period_start: str, period_end: str) -> Diges
     prev = _previous_counts(user["id"])
     deltas = {k: contrib[k] - int(prev.get(k, 0)) for k in _DELTA_KEYS}
 
+    # "Last 7 Days" stat strip is a FIXED trailing week, not the digest window — so a 6h/12h
+    # digest doesn't show its tiny window counts under a "Last 7 Days" heading. Separate fetch
+    # over [period_end - 7d, period_end]; streak is untouched (365-day lookback in the client).
+    week_start = (github.parse_iso(period_end) - timedelta(days=7)).isoformat()
+    wc = await github.fetch_contributions(username, token, week_start, period_end, tracked=tracked)
+    wm = await github.fetch_merged_prs(username, token, week_start, tracked=tracked)
+    week_stats = {
+        "prs_opened": wc["prs_opened"], "prs_merged": wm["count"],
+        "reviews": wc["reviews"], "issues_opened": wc["issues_opened"],
+        "repos_active": len(wc["repos_active"]),
+    }
+
     return DigestContext(
         github_username=username,
         period_start=period_start[:10], period_end=period_end[:10],
@@ -151,6 +163,7 @@ async def build_context(user: dict, period_start: str, period_end: str) -> Diges
         shipped_prs=[ShippedPR(**p) for p in merged["prs"]],
         work_log=[WorkItem(**w) for w in work],
         deltas=deltas,
+        week_stats=week_stats,
     )
 
 

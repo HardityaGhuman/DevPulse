@@ -55,6 +55,11 @@ class DigestContext(BaseModel):
     shipped_prs: list[ShippedPR] = []
     work_log: list[WorkItem] = []
     deltas: dict[str, int] = {}          # e.g. {"commits": 4, "prs_opened": -1}
+    # Fixed trailing-7-day counts for the "Last 7 Days" stat strip — always a real week,
+    # independent of the digest cadence (a 6h digest's own window would otherwise mislabel
+    # tiny counts as weekly). Keys: prs_opened, prs_merged, reviews, issues_opened,
+    # repos_active. Streak is NOT here — it stays streak_days (its own 365-day lookback).
+    week_stats: dict[str, int] = {}
 
 
 class DigestResult(BaseModel):
