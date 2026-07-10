@@ -35,6 +35,14 @@ const FREQS = [
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 const BROWSER_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+// Full IANA zone list when the browser supports it (all modern ones do); otherwise a small
+// fallback that still includes the detected zone so the user is never stuck on a wrong guess.
+const TZONES = (() => {
+  const list = typeof Intl.supportedValuesOf === "function"
+    ? Intl.supportedValuesOf("timeZone")
+    : ["UTC", "Asia/Kolkata", "America/New_York", "America/Los_Angeles", "Europe/London"];
+  return Array.from(new Set([BROWSER_TZ, ...list])).sort();
+})();
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const hourLabel = (h) => `${String(h).padStart(2, "0")}:00`;
 
@@ -328,7 +336,15 @@ export default function Dashboard() {
                   >
                     {HOURS.map((h) => <option key={h} value={h}>{hourLabel(h)}</option>)}
                   </select>
-                  <span className="mono" style={{ color: "var(--color-muted)", fontSize: 12, textTransform: "none" }}>{tz}</span>
+                  <select
+                    value={tz}
+                    onChange={(e) => setTz(e.target.value)}
+                    className="mono"
+                    style={{ ...selectStyle, maxWidth: 220 }}
+                    title="Delivery timezone"
+                  >
+                    {TZONES.map((z) => <option key={z} value={z}>{z}</option>)}
+                  </select>
                 </div>
                 {isInterval(freq) && (
                   <p className="mono mt-3" style={{ color: "var(--color-muted)", fontSize: 12, textTransform: "none" }}>
@@ -337,6 +353,21 @@ export default function Dashboard() {
                 )}
               </div>
             )}
+
+            {/* actions — same handler/state as the repos card; either button saves all settings */}
+            <div className="mt-8 flex flex-wrap items-center gap-4">
+              <button
+                onClick={save}
+                disabled={!dirty || saveState === "saving"}
+                className="btn-dark px-6 py-3"
+                style={{ opacity: !dirty || saveState === "saving" ? 0.4 : 1, cursor: !dirty ? "default" : "pointer" }}
+              >
+                {saveState === "saving" ? "Saving…" : "Save changes"}
+              </button>
+
+              {saveState === "ok" && <span className="mono" style={{ color: "var(--color-ok)", textTransform: "none" }}>Saved.</span>}
+              {saveState === "err" && <span className="mono" style={{ color: "var(--color-bad)", textTransform: "none" }}>Couldn't save — try again.</span>}
+            </div>
           </Section>
 
           {/* 02 — TRACKED REPOS */}

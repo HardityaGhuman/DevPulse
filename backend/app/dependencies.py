@@ -8,6 +8,7 @@ never written to the database.
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from postgrest.exceptions import APIError
 from app.security.clerk_jwt import verify_clerk_jwt
 from app.clients import clerk
 from app.database import get_supabase
@@ -32,14 +33,26 @@ async def get_current_user(
         email = claims.get("email") or clerk.primary_email_from_user(clerk_user or {})
         if not email:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "User missing an email address")
-        inserted = supabase.table("users").insert({
-            "clerk_id": clerk_id,
-            "email": email,
-            "github_username": clerk.github_username_from_user(clerk_user or {}),
-        }).execute()
-        if not inserted.data:
-            raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Failed to provision user")
-        user = inserted.data[0]
+        # The dashboard fires several requests in parallel on first load; on a brand-new user
+        # they all SELECT-miss and then race to INSERT. One wins; the rest hit the clerk_id
+        # unique constraint (Postgres 23505). Also races the Clerk webhook. Treat a duplicate
+        # as "someone else provisioned it" and re-select, instead of 500-ing the loser requests.
+        try:
+            inserted = supabase.table("users").insert({
+                "clerk_id": clerk_id,
+                "email": email,
+                "github_username": clerk.github_username_from_user(clerk_user or {}),
+            }).execute()
+            user = inserted.data[0] if inserted.data else None
+        except APIError as e:
+            if getattr(e, "code", None) != "23505":
+                raise
+            user = None  # lost the provisioning race — the row now exists; fall through to re-select
+        if user is None:
+            refetch = supabase.table("users").select("*").eq("clerk_id", clerk_id).execute()
+            if not refetch.data:
+                raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Failed to provision user")
+            user = refetch.data[0]
 
     # Backfill github_username if still missing (no token needed).
     if not user.get("github_username"):
