@@ -50,16 +50,30 @@ def _parse_ts(value) -> datetime | None:
 def _is_due(user: dict, last: datetime | None, now: datetime) -> bool:
     """Whether this user should receive a digest at `now` (UTC).
 
-    6h/12h are pure intervals (time-of-day doesn't apply). daily/weekly fire at the user's
-    chosen hour (and weekday) in their timezone — so the cron MUST run at least hourly.
+    All cadences are anchored to the user's chosen local hour (`digest_hour`), so the cron
+    MUST run at least hourly. 6h/12h fire at every hour aligned to that anchor (6h anchored at
+    08:00 → 08/14/20/02; 12h → 08/20); daily fires once at the hour; weekly at the hour on the
+    chosen weekday. Anchoring replaces the old "next tick after the interval elapsed" behavior,
+    which made sub-daily send times unpredictable.
     """
     freq = user.get("digest_frequency")
 
     if freq in ("6h", "12h"):
-        hours = _INTERVAL_HOURS[freq]
+        interval = _INTERVAL_HOURS[freq]
+        try:
+            tz = ZoneInfo(user.get("digest_timezone") or "UTC")
+        except Exception:
+            tz = ZoneInfo("UTC")
+        local = now.astimezone(tz)
+        anchor = _DEFAULT_HOUR if user.get("digest_hour") is None else int(user.get("digest_hour"))
+        send_hours = {(anchor + k * interval) % 24 for k in range(24 // interval)}
+        if local.hour not in send_hours:
+            return False
+        # At an anchored hour: fire, but guard against a second fire in the same window
+        # (e.g. two cron ticks within the hour) via the elapsed-interval check.
         if last is None:
             return True
-        return (now - last) >= (timedelta(hours=hours) - _DUE_GRACE)
+        return (now - last) >= (timedelta(hours=interval) - _DUE_GRACE)
 
     if freq not in ("daily", "weekly"):     # off / unknown
         return False
@@ -226,6 +240,7 @@ async def generate_and_deliver(user: dict) -> dict:
         to=user["email"], subject=subject, digest=result, context=context,
         period_start=context.period_start, period_end=context.period_end,
         timezone=user.get("digest_timezone"),
+        frequency=user.get("digest_frequency"),
     )
 
     stamp = datetime.now(timezone.utc)

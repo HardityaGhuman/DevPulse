@@ -2,17 +2,16 @@
   DevPulse — Dashboard (digest settings).
   Editorial/broadsheet language shared with the landing (serif + mono, hairlines,
   indigo scalpel accent, glass cards). Exposes exactly two controls — delivery
-  frequency and tracked repos — plus a "send one now" action, the static digest
-  sample, and a read-only list of past issues.
+  frequency (+ a delivery/anchor time; 6h/12h anchor to the chosen hour and repeat
+  across the day) and tracked repos — plus a read-only list of past issues.
 
   Grounded to real backend endpoints:
     GET  /api/users/me            → profile
-    GET  /api/digest/settings     → { digest_frequency, tracked_repos }
-    POST /api/digest/settings     → persist { digest_frequency, tracked_repos? }
+    GET  /api/digest/settings     → { digest_frequency, tracked_repos, digest_hour, digest_day, digest_timezone }
+    POST /api/digest/settings     → persist the above
     GET  /api/github/repos        → { repos: [{ name, language, private, ... }] }
-    POST /api/digest/send-now     → generate + email now (rate limited 5/min)
     GET  /api/digest/history      → { digests: [{ period_end, ai_summary, email_sent_at }] }
-  No live preview (project direction) — the digest only truly arrives by email.
+  No send-now and no live preview (project direction) — the digest only truly arrives by email.
 */
 
 import { useEffect, useMemo, useState } from "react";
@@ -38,6 +37,16 @@ const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday"
 const BROWSER_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const hourLabel = (h) => `${String(h).padStart(2, "0")}:00`;
+
+// 6h/12h are anchored to the chosen hour, then repeat across the day (mirrors backend _is_due).
+const INTERVAL = { "6h": 6, "12h": 12 };
+const isInterval = (f) => f === "6h" || f === "12h";
+function sendTimes(anchor, interval) {
+  return Array.from({ length: 24 / interval }, (_, k) => (anchor + k * interval) % 24)
+    .sort((a, b) => a - b)
+    .map(hourLabel)
+    .join(" · ");
+}
 const selectStyle = {
   textTransform: "none", fontSize: 14, padding: "6px 12px", borderRadius: 8,
   border: "1px solid var(--color-hairline)", background: "#fff", color: "var(--color-ink)",
@@ -294,29 +303,38 @@ export default function Dashboard() {
               {activeHint}
             </p>
 
-            {(freq === "daily" || freq === "weekly") && (
-              <div className="mt-6 flex flex-wrap items-center gap-3">
-                <span className="mono" style={{ color: "var(--color-muted)", fontSize: 12 }}>Deliver</span>
-                {freq === "weekly" && (
+            {freq !== "off" && (
+              <div className="mt-6">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="mono" style={{ color: "var(--color-muted)", fontSize: 12 }}>
+                    {isInterval(freq) ? "Anchor" : "Deliver"}
+                  </span>
+                  {freq === "weekly" && (
+                    <select
+                      value={day}
+                      onChange={(e) => setDay(e.target.value)}
+                      className="mono"
+                      style={selectStyle}
+                    >
+                      {DAYS.map((d) => <option key={d} value={d}>{cap(d)}</option>)}
+                    </select>
+                  )}
+                  <span className="mono" style={{ color: "var(--color-muted)", fontSize: 12 }}>at</span>
                   <select
-                    value={day}
-                    onChange={(e) => setDay(e.target.value)}
+                    value={hour}
+                    onChange={(e) => setHour(Number(e.target.value))}
                     className="mono"
                     style={selectStyle}
                   >
-                    {DAYS.map((d) => <option key={d} value={d}>{cap(d)}</option>)}
+                    {HOURS.map((h) => <option key={h} value={h}>{hourLabel(h)}</option>)}
                   </select>
+                  <span className="mono" style={{ color: "var(--color-muted)", fontSize: 12, textTransform: "none" }}>{tz}</span>
+                </div>
+                {isInterval(freq) && (
+                  <p className="mono mt-3" style={{ color: "var(--color-muted)", fontSize: 12, textTransform: "none" }}>
+                    Sends at {sendTimes(hour, INTERVAL[freq])}
+                  </p>
                 )}
-                <span className="mono" style={{ color: "var(--color-muted)", fontSize: 12 }}>at</span>
-                <select
-                  value={hour}
-                  onChange={(e) => setHour(Number(e.target.value))}
-                  className="mono"
-                  style={selectStyle}
-                >
-                  {HOURS.map((h) => <option key={h} value={h}>{hourLabel(h)}</option>)}
-                </select>
-                <span className="mono" style={{ color: "var(--color-muted)", fontSize: 12, textTransform: "none" }}>{tz}</span>
               </div>
             )}
           </Section>

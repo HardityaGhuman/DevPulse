@@ -103,6 +103,35 @@ _ICON_ATTN = "[!]"                     # bracketed bang — pairs with <>; NO em
 _ICON_BOLT = "&#9889;&#65038;"        # ⚡︎ lightning, text-presentation
 _ICON_CODE = "&lt;&gt;"               # <> (code)
 
+# Window-relative copy per cadence. The digest window scales with frequency, so the daily-first
+# wording ("Shipped Today", "Today's Work", "merged N today") would lie on a 6h or weekly send.
+# Each section that describes the WINDOW pulls its label/verb from here. §6 is deliberately NOT
+# here — it is always a fixed trailing 7 days ("Last 7 Days"), independent of cadence.
+_WINDOW_COPY = {
+    "6h":     {"brief": "6-HOURLY BRIEF",  "shipped": "Shipped (last 6h)",   "work": "Recent Work",       "when": "in the last 6 hours"},
+    "12h":    {"brief": "12-HOURLY BRIEF", "shipped": "Shipped (last 12h)",  "work": "Recent Work",       "when": "in the last 12 hours"},
+    "daily":  {"brief": "DAILY BRIEF",     "shipped": "Shipped Today",       "work": "Today's Work",      "when": "today"},
+    "weekly": {"brief": "WEEKLY BRIEF",    "shipped": "Shipped This Week",   "work": "This Week's Work",  "when": "this week"},
+}
+_DEFAULT_COPY = _WINDOW_COPY["daily"]
+
+
+def _copy_for(frequency: str | None) -> dict:
+    return _WINDOW_COPY.get(frequency or "", _DEFAULT_COPY)
+
+
+# Long lists become a wall of text on wide windows (a weekly §5 can be 60+ commits). Cap the
+# shipped-PR and work-log lists and summarize the remainder as a single overflow line.
+_MAX_SHIPPED = 6
+_MAX_WORK = 6
+# Merge commits are pure noise in the work log ("Merge pull request #N …") — drop them entirely.
+_MERGE_PREFIXES = ("merge pull request", "merge branch", "merge remote-tracking")
+
+
+def _overflow_line(text: str) -> str:
+    return (f'<p style="font-family:{_MONO};font-size:11px;font-weight:500;color:{_MUTED};'
+            f'letter-spacing:0.03em;margin:14px 0 0;">+ {text}</p>')
+
 
 def _emphasize_headline(headline: str, context: DigestContext) -> str:
     """Port of the spec's lede emphasis: quoted spans → bold-italic-indigo; repo names →
@@ -146,11 +175,12 @@ def _rule() -> str:
 
 # ── Section 1 — AI summary + mac-window card ─────────────────────
 
-def _summary_facts(context: DigestContext) -> str:
+def _summary_facts(context: DigestContext, copy: dict = _DEFAULT_COPY) -> str:
     """The two templated fact lines under the LLM headline — counts, never LLM prose."""
     m = context.prs_merged
-    merged = ("No code was merged today." if m == 0
-              else f"You merged {m} pull request{'' if m == 1 else 's'} today.")
+    when = copy["when"]
+    merged = (f"No code was merged {when}." if m == 0
+              else f"You merged {m} pull request{'' if m == 1 else 's'} {when}.")
     k = len(context.waiting_prs)
     if k == 0:
         attn = "Nothing needs your attention right now."
@@ -210,14 +240,14 @@ def _mac_card(context: DigestContext, tz: ZoneInfo = _DEFAULT_TZ) -> str:
 
 
 def _section_summary(digest: DigestResult, context: DigestContext,
-                     tz: ZoneInfo = _DEFAULT_TZ) -> str:
+                     tz: ZoneInfo = _DEFAULT_TZ, copy: dict = _DEFAULT_COPY) -> str:
     headline = _emphasize_headline(digest.headline, context)
     return f"""
     <table width="100%" role="presentation" cellpadding="0" cellspacing="0"><tr>
       <td valign="top" width="56%" style="padding-right:24px;">
         {_label("1", "AI Summary", _ICON_AI).replace('margin:0 0 16px', 'margin:0 0 24px')}
         <p style="font-family:{_SANS};font-size:22px;line-height:1.25;font-weight:400;color:{_INK};margin:0 0 24px;">{headline}</p>
-        {_summary_facts(context)}
+        {_summary_facts(context, copy)}
       </td>
       <td valign="top" width="44%">{_mac_card(context, tz)}</td>
     </tr></table>"""
@@ -225,19 +255,23 @@ def _section_summary(digest: DigestResult, context: DigestContext,
 
 # ── Section 2 — Shipped today ────────────────────────────────────
 
-def _section_shipped(context: DigestContext) -> str:
-    if context.shipped_prs:
+def _section_shipped(context: DigestContext, copy: dict = _DEFAULT_COPY) -> str:
+    prs = context.shipped_prs
+    if prs:
         rows = "".join(
             f'<p style="margin:0 0 10px;font-family:{_SANS};font-size:15px;">'
             f'<a href="{_safe_url(p.url)}" style="font-family:{_SERIF};color:{_INK};text-decoration:none;font-weight:700;">'
             f'PR #{p.number} &mdash; {_esc(p.title)}</a>'
             f'<span style="font-family:{_MONO};font-size:11px;color:{_MUTED};">&nbsp;&nbsp;{_esc(p.repo)}</span></p>'
-            for p in context.shipped_prs)
+            for p in prs[:_MAX_SHIPPED])
+        extra = len(prs) - _MAX_SHIPPED
+        if extra > 0:
+            rows += _overflow_line(f"{extra} more merged")
         content = rows
     else:
         content = (f'<p style="font-family:{_SANS};font-size:14px;line-height:1.5;'
-                   f'color:{_MUTED};margin:0;">No code shipped today.</p>')
-    return (f'{_label("2", "Shipped Today")}{_rule()}'
+                   f'color:{_MUTED};margin:0;">No code shipped {copy["when"]}.</p>')
+    return (f'{_label("2", copy["shipped"])}{_rule()}'
             f'<div style="padding-top:16px;">{content}</div>')
 
 
@@ -328,26 +362,39 @@ def _log_glyph(headline: str) -> str:
     return "+"
 
 
-def _section_work_log(context: DigestContext) -> str:
-    if context.work_log:
-        items = []
-        for w in context.work_log:
-            sub = f"{_esc(w.repo)} &middot; {w.commits} commit{'' if w.commits == 1 else 's'}"
-            items.append(
-                f'<table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:24px;"><tr>'
-                f'<td valign="middle" style="padding-right:24px;">'
-                f'<div style="width:32px;height:32px;background-color:{_CHIP_BG};'
-                f'border:1px solid {_HAIR};border-radius:4px;text-align:center;line-height:32px;'
-                f'font-family:{_MONO};font-size:13px;color:{_MUTED};">{_log_glyph(w.headline)}</div></td>'
-                f'<td valign="middle">'
-                f'<p style="font-family:{_SERIF};font-size:16px;font-weight:700;color:{_INK};margin:0;line-height:1.4;">{_esc(w.headline)}</p>'
-                f'<p style="font-family:{_SANS};font-size:11px;color:{_MUTED};margin:1px 0 0;">{sub}</p>'
-                f'</td></tr></table>')
-        content = "".join(items)
+def _is_merge_commit(headline: str) -> bool:
+    return str(headline).lower().startswith(_MERGE_PREFIXES)
+
+
+def _section_work_log(context: DigestContext, copy: dict = _DEFAULT_COPY) -> str:
+    # Drop merge-commit noise, then cap — a weekly window can carry 60+ commits, and an
+    # uncapped list turns the digest into a wall of text.
+    log = [w for w in context.work_log if not _is_merge_commit(w.headline)]
+    if log:
+        rows = "".join(
+            f'<table role="presentation" cellpadding="0" cellspacing="0" style="margin-bottom:24px;"><tr>'
+            f'<td valign="middle" style="padding-right:24px;">'
+            f'<div style="width:32px;height:32px;background-color:{_CHIP_BG};'
+            f'border:1px solid {_HAIR};border-radius:4px;text-align:center;line-height:32px;'
+            f'font-family:{_MONO};font-size:13px;color:{_MUTED};">{_log_glyph(w.headline)}</div></td>'
+            f'<td valign="middle">'
+            f'<p style="font-family:{_SERIF};font-size:16px;font-weight:700;color:{_INK};margin:0;line-height:1.4;">{_esc(w.headline)}</p>'
+            f'<p style="font-family:{_SANS};font-size:11px;color:{_MUTED};margin:1px 0 0;">'
+            f'{_esc(w.repo)} &middot; {w.commits} commit{"" if w.commits == 1 else "s"}</p>'
+            f'</td></tr></table>'
+            for w in log[:_MAX_WORK])
+        rest = log[_MAX_WORK:]
+        if rest:
+            more_commits = sum(w.commits for w in rest)
+            more_repos = len({w.repo for w in rest})
+            rows += _overflow_line(
+                f'{more_commits} more commit{"" if more_commits == 1 else "s"} across '
+                f'{more_repos} repo{"" if more_repos == 1 else "s"}')
+        content = rows
     else:
         content = (f'<p style="font-family:{_SANS};font-size:14px;color:{_MUTED};margin:0;">'
-                   f'No commits recorded in this period.</p>')
-    return f'{_label("5", "Today\'s Work")}{_rule()}<div style="padding-top:24px;">{content}</div>'
+                   f'No commits recorded {copy["when"]}.</p>')
+    return f'{_label("5", copy["work"])}{_rule()}<div style="padding-top:24px;">{content}</div>'
 
 
 # ── Section 6 — Last 7 days (stat strip) ─────────────────────────
@@ -418,7 +465,8 @@ def _footer() -> str:
 
 def _build_digest_html(digest: DigestResult, context: DigestContext,
                        period_start: str, period_end: str,
-                       tz: ZoneInfo = _DEFAULT_TZ) -> str:
+                       tz: ZoneInfo = _DEFAULT_TZ, frequency: str | None = None) -> str:
+    copy = _copy_for(frequency)
     masthead = f"""
     <table width="100%" role="presentation" cellpadding="0" cellspacing="0">
       <tr>
@@ -426,12 +474,12 @@ def _build_digest_html(digest: DigestResult, context: DigestContext,
           <div style="font-family:{_SERIF};font-size:32px;font-weight:700;color:{_INK};letter-spacing:-0.02em;line-height:1;">DEVPULSE</div>
         </td>
         <td valign="bottom" align="right" style="white-space:nowrap;">
-          <div style="font-family:{_MONO};font-size:12px;font-weight:500;color:{_INK};letter-spacing:0.1em;">ISSUE 001 &middot; DAILY BRIEF</div>
+          <div style="font-family:{_MONO};font-size:12px;font-weight:500;color:{_INK};letter-spacing:0.1em;">ISSUE 001 &middot; {copy["brief"]}</div>
         </td>
       </tr>
       <tr>
         <td valign="top" style="padding-top:4px;">
-          <div style="font-family:{_MONO};font-size:9px;font-weight:500;color:{_MUTED};letter-spacing:0.05em;white-space:nowrap;">A DEVELOPER'S DAILY BRIEF</div>
+          <div style="font-family:{_MONO};font-size:9px;font-weight:500;color:{_MUTED};letter-spacing:0.05em;white-space:nowrap;">A DEVELOPER'S BRIEF</div>
           <div style="font-family:{_MONO};font-size:9px;font-weight:500;color:{_MUTED};letter-spacing:0.05em;white-space:nowrap;margin-top:2px;">BUILT ON YOUR GITHUB</div>
         </td>
         <td valign="top" align="right" style="padding-top:4px;white-space:nowrap;">
@@ -449,10 +497,10 @@ def _build_digest_html(digest: DigestResult, context: DigestContext,
       <div style="padding:32px 32px 16px;">{masthead}</div>
       <div style="margin:0 32px;">{_rule()}</div>
       <div style="padding:40px 32px;">
-      {_section_summary(digest, context, tz)}{gap}
-      {_section_shipped(context)}{gap}
+      {_section_summary(digest, context, tz, copy)}{gap}
+      {_section_shipped(context, copy)}{gap}
       {_section_wip_attention(context)}{gap}
-      {_section_work_log(context)}{gap}
+      {_section_work_log(context, copy)}{gap}
       {_section_stats(context, digest.momentum)}
       </div>
       <div style="padding:0 32px 48px;">
@@ -485,11 +533,12 @@ def _build_digest_html(digest: DigestResult, context: DigestContext,
 
 async def send_digest_email(to: str, subject: str, digest: DigestResult,
                             context: DigestContext, period_start: str, period_end: str,
-                            timezone: str | None = None) -> bool:
+                            timezone: str | None = None, frequency: str | None = None) -> bool:
     """Send a digest email via Resend. Returns True on success, False on failure.
 
     `timezone` is the recipient's IANA tz (their saved digest_timezone); the masthead/card
-    delivery clock renders in it. Falls back to IST when unset/invalid.
+    delivery clock renders in it. Falls back to IST when unset/invalid. `frequency` selects the
+    window-relative copy (labels/verbs) so the wording matches the digest's actual window.
     """
     tz = _resolve_tz(timezone)
     try:
@@ -498,7 +547,7 @@ async def send_digest_email(to: str, subject: str, digest: DigestResult,
             "from": settings.email_from,
             "to": [to],
             "subject": subject,
-            "html": _build_digest_html(digest, context, period_start, period_end, tz),
+            "html": _build_digest_html(digest, context, period_start, period_end, tz, frequency),
         }
         if settings.email_reply_to:
             payload["reply_to"] = settings.email_reply_to

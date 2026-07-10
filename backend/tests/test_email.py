@@ -74,3 +74,40 @@ def test_html_escapes_malicious_pr_title():
     assert "&lt;script&gt;" in html
     assert 'href="javascript:alert(1)"' not in html      # unsafe scheme dropped
     assert 'href="#"' in html
+
+
+def test_cadence_labels_switch_with_frequency():
+    weekly = _build_digest_html(RES, CTX, "2026-06-25", "2026-07-02", frequency="weekly")
+    assert "Shipped This Week" in weekly
+    assert "This Week's Work" in weekly
+    assert "WEEKLY BRIEF" in weekly
+    assert "this week" in weekly              # §1 fact verb
+    assert "Shipped Today" not in weekly      # daily-first copy must not leak
+
+    six = _build_digest_html(RES, CTX, "2026-07-02", "2026-07-02", frequency="6h")
+    assert "Recent Work" in six
+    assert "6-HOURLY BRIEF" in six
+    assert "in the last 6 hours" in six
+
+    # §6 stays fixed regardless of cadence
+    assert "Last 7 Days" in weekly and "Last 7 Days" in six
+
+
+def _bulk_ctx():
+    work = [WorkItem(repo="me/aria", headline="Merge pull request #9 from x", commits=1)]
+    work += [WorkItem(repo="me/aria", headline=f"feat: item {i}", commits=1) for i in range(12)]
+    shipped = [ShippedPR(repo="me/aria", number=i, title=f"PR {i}", url=f"https://x/{i}")
+               for i in range(9)]
+    return CTX.model_copy(update={"work_log": work, "shipped_prs": shipped})
+
+
+def test_work_log_drops_merges_and_caps_with_overflow():
+    html = _build_digest_html(RES, _bulk_ctx(), "2026-06-25", "2026-07-02", frequency="weekly")
+    assert "Merge pull request" not in html            # merge-commit noise dropped
+    # 12 non-merge items, cap 6 -> 6 remain
+    assert "6 more commits across 1 repo" in html
+
+
+def test_shipped_prs_cap_with_overflow():
+    html = _build_digest_html(RES, _bulk_ctx(), "2026-06-25", "2026-07-02", frequency="weekly")
+    assert "3 more merged" in html                     # 9 shipped, cap 6 -> 3 overflow

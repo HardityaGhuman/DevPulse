@@ -44,22 +44,44 @@ def test_period_key_uses_user_timezone():
     assert d._period_key(u, datetime(2026, 7, 9, 2, 0, tzinfo=timezone.utc)) == "daily:2026-07-08"
 
 
-# ── interval frequencies (time-of-day doesn't apply) ──
-def test_is_due_never_sent():
-    assert d._is_due(_u(freq="6h"), None, NOW) is True
+# ── anchored interval frequencies (6h/12h fire at hours aligned to digest_hour) ──
+# NOW = 2026-07-02 12:00 UTC.  anchor 6, 6h -> sends 06/12/18/00 (12 is a send hour).
+def test_is_due_6h_at_anchor_hour_never_sent():
+    assert d._is_due(_u(freq="6h", digest_hour=6, digest_timezone="UTC"), None, NOW) is True
 
 
-def test_is_due_elapsed_enough():
-    assert d._is_due(_u(freq="6h"), NOW - timedelta(hours=6), NOW) is True
+def test_is_due_6h_off_anchor_hour():
+    # anchor 8 -> sends 08/14/20/02; 12:00 is not a send hour -> not due
+    assert d._is_due(_u(freq="6h", digest_hour=8, digest_timezone="UTC"), None, NOW) is False
 
 
-def test_is_due_within_grace():
-    last = NOW - timedelta(hours=5, minutes=40)   # 5h40 >= 6h-30min -> due
-    assert d._is_due(_u(freq="6h"), last, NOW) is True
+def test_is_due_6h_elapsed_enough_at_anchor():
+    u = _u(freq="6h", digest_hour=12, digest_timezone="UTC")   # sends 12/18/00/06
+    assert d._is_due(u, NOW - timedelta(hours=6), NOW) is True
 
 
-def test_is_due_too_soon():
-    assert d._is_due(_u(freq="6h"), NOW - timedelta(hours=2), NOW) is False
+def test_is_due_6h_within_grace_at_anchor():
+    u = _u(freq="6h", digest_hour=12, digest_timezone="UTC")
+    assert d._is_due(u, NOW - timedelta(hours=5, minutes=40), NOW) is True   # 5h40 >= 6h-30min
+
+
+def test_is_due_6h_too_soon_same_window():
+    # at an anchor hour but only 2h since last send -> guard blocks a second fire
+    u = _u(freq="6h", digest_hour=12, digest_timezone="UTC")
+    assert d._is_due(u, NOW - timedelta(hours=2), NOW) is False
+
+
+def test_is_due_6h_respects_timezone_anchor():
+    # 12:00 UTC == 17:30 IST -> local hour 17; anchor 5 -> sends 05/11/17/23 -> due
+    ist = _u(freq="6h", digest_hour=5, digest_timezone="Asia/Kolkata")
+    assert d._is_due(ist, None, NOW) is True
+
+
+def test_is_due_12h_two_anchored_sends():
+    u = _u(freq="12h", digest_hour=0, digest_timezone="UTC")   # sends 00 and 12
+    assert d._is_due(u, None, NOW) is True                     # 12:00 is a send hour
+    off = _u(freq="12h", digest_hour=1, digest_timezone="UTC") # sends 01 and 13
+    assert d._is_due(off, None, NOW) is False
 
 
 def test_is_due_off_never():
