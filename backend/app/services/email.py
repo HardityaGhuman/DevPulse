@@ -531,6 +531,35 @@ def _build_digest_html(digest: DigestResult, context: DigestContext,
 </html>"""
 
 
+def _build_digest_text(digest: DigestResult, context: DigestContext) -> str:
+    """Plain-text alternative part. An HTML-only email scores higher on spam filters; a
+    multipart/alternative with a real text body is a strong legitimacy signal. Facts only."""
+    m = _MOMENTUM_PHRASE.get(digest.momentum, _MOMENTUM_PHRASE["steady"])
+    lines = [
+        "DEVPULSE — a developer's brief, built on your GitHub.",
+        "",
+        digest.headline,
+        m,
+        "",
+        f"Commits: {context.commits}   PRs merged: {context.prs_merged}   "
+        f"Reviews: {context.reviews}   Open PRs waiting: {len(context.waiting_prs)}",
+        f"Streak: {context.streak_days} day(s)",
+        "",
+        f"Manage your digest or turn it off: {settings.frontend_url}/dashboard",
+    ]
+    return "\n".join(lines)
+
+
+def _unsubscribe_headers() -> dict:
+    """List-Unsubscribe(+ -Post) tells Gmail/Outlook this is legitimate bulk mail with an easy
+    opt-out — a required signal under Gmail's 2024 bulk-sender rules. We point at the dashboard
+    (where cadence -> 'off' is the opt-out) plus a mailto fallback when a reply-to is set."""
+    targets = [f"<{settings.frontend_url}/dashboard>"]
+    if settings.email_reply_to:
+        targets.insert(0, f"<mailto:{settings.email_reply_to}?subject=unsubscribe>")
+    return {"List-Unsubscribe": ", ".join(targets)}
+
+
 async def send_digest_email(to: str, subject: str, digest: DigestResult,
                             context: DigestContext, period_start: str, period_end: str,
                             timezone: str | None = None, frequency: str | None = None) -> bool:
@@ -548,6 +577,8 @@ async def send_digest_email(to: str, subject: str, digest: DigestResult,
             "to": [to],
             "subject": subject,
             "html": _build_digest_html(digest, context, period_start, period_end, tz, frequency),
+            "text": _build_digest_text(digest, context),
+            "headers": _unsubscribe_headers(),
         }
         if settings.email_reply_to:
             payload["reply_to"] = settings.email_reply_to

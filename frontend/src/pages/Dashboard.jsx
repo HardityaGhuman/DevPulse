@@ -14,7 +14,7 @@
   No send-now and no live preview (project direction) — the digest only truly arrives by email.
 */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { UserButton, useClerk } from "@clerk/clerk-react";
@@ -60,6 +60,73 @@ const selectStyle = {
   border: "1px solid var(--color-hairline)", background: "#fff", color: "var(--color-ink)",
   cursor: "pointer",
 };
+
+/* Searchable timezone combobox. A native <select> over the 400+ IANA zones renders an
+   unstyled OS popup whose scrollbar jumps from a stub to full-height — so we roll our own
+   fixed-height, searchable dropdown (same look as the tracked-repos list). */
+function TzPicker({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const ref = useRef(null);
+  // Close on any click outside the widget.
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+  const shown = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    return s ? TZONES.filter((z) => z.toLowerCase().includes(s)) : TZONES;
+  }, [q]);
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="mono"
+        style={{ ...selectStyle, textTransform: "none", maxWidth: 260 }}
+        title="Delivery timezone"
+      >
+        {value} ▾
+      </button>
+      {open && (
+        <div
+          className="glass"
+          style={{ position: "absolute", zIndex: 40, marginTop: 6, width: 280, borderRadius: 10, overflow: "hidden", boxShadow: "0 12px 32px rgba(0,0,0,0.18)" }}
+        >
+          <div className="px-4 py-3" style={{ borderBottom: "1px solid var(--color-hairline)" }}>
+            <input
+              autoFocus
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search timezone…"
+              className="mono w-full"
+              style={{ textTransform: "none", fontSize: 13, background: "transparent", border: "none", outline: "none", color: "var(--color-ink)" }}
+            />
+          </div>
+          <div style={{ maxHeight: 260, overflowY: "auto" }}>
+            {shown.length === 0 ? (
+              <p className="mono px-4 py-4" style={{ color: "var(--color-muted)", textTransform: "none", fontSize: 13 }}>No matches.</p>
+            ) : (
+              shown.map((z) => (
+                <button
+                  key={z}
+                  type="button"
+                  onClick={() => { onChange(z); setOpen(false); setQ(""); }}
+                  className="mono w-full text-left px-4 py-2"
+                  style={{ textTransform: "none", fontSize: 13, background: z === value ? "var(--color-tint)" : "transparent", color: "var(--color-ink)", borderBottom: "1px solid var(--color-hairline)" }}
+                >
+                  {z}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* Fade + rise on scroll into view — same motion as the landing. */
 function Reveal({ children, delay = 0, className = "" }) {
@@ -336,15 +403,7 @@ export default function Dashboard() {
                   >
                     {HOURS.map((h) => <option key={h} value={h}>{hourLabel(h)}</option>)}
                   </select>
-                  <select
-                    value={tz}
-                    onChange={(e) => setTz(e.target.value)}
-                    className="mono"
-                    style={{ ...selectStyle, maxWidth: 220 }}
-                    title="Delivery timezone"
-                  >
-                    {TZONES.map((z) => <option key={z} value={z}>{z}</option>)}
-                  </select>
+                  <TzPicker value={tz} onChange={setTz} />
                 </div>
                 {isInterval(freq) && (
                   <p className="mono mt-3" style={{ color: "var(--color-muted)", fontSize: 12, textTransform: "none" }}>
