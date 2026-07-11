@@ -3,15 +3,16 @@ DevPulse — Digest Router
 GET  /api/digest/settings
 POST /api/digest/settings
 GET  /api/digest/history
-POST /api/digest/preview     (rate limited)
-POST /api/digest/send-now    (rate limited)
+
+NOTE: there is intentionally NO on-demand send/preview route. The digest is only ever delivered
+by the scheduled cron pipeline (see routers/internal.py). Exposing an authenticated on-demand
+send would be a cost-abuse surface (LLM + email spend) with no product use — deleted 2026-07-11.
 """
 
 from fastapi import APIRouter, Depends, Request
 from app.dependencies import get_current_user
 from app.database import get_supabase
 from app.schemas import DigestSettingsRequest
-from app.services.digest import get_or_build_digest, generate_and_deliver
 from app.rate_limit import limiter
 
 router = APIRouter(prefix="/api/digest", tags=["digest"])
@@ -62,19 +63,3 @@ async def get_digest_history(user: dict = Depends(get_current_user)):
         .execute()
     )
     return {"digests": result.data or []}
-
-
-@router.post("/preview")
-@limiter.limit("10/minute")
-async def preview_digest(request: Request, user: dict = Depends(get_current_user)):
-    """Preview the digest without sending it (uses the short-TTL cache)."""
-    result, ctx = await get_or_build_digest(user, force=False)
-    return {"digest": result.model_dump(),
-            "period_start": ctx.period_start, "period_end": ctx.period_end}
-
-
-@router.post("/send-now")
-@limiter.limit("5/minute")
-async def send_digest_now(request: Request, user: dict = Depends(get_current_user)):
-    """Generate a digest immediately, persist it, and email it to the user."""
-    return await generate_and_deliver(user)
