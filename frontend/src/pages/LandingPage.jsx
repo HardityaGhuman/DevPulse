@@ -78,20 +78,20 @@ function Feature({ num, label, heading, accent, tail, lede, card, flip }) {
 
           {flip ? (
             <>
-              <div className="md:col-start-3 md:col-span-3">{card}</div>
-              <div className="md:col-start-6 md:col-span-5">
-                <h2 className="serif" style={{ fontSize: 44, fontWeight: 700, lineHeight: 1.15, margin: 0 }}>
+              <div className="md:col-start-6 md:col-span-5 order-2 md:order-none">
+                <h2 className="serif" style={{ fontSize: "clamp(30px, 6.5vw, 44px)", fontWeight: 700, lineHeight: 1.15, margin: 0 }}>
                   {heading} <span className="italic" style={{ color: "var(--color-accent)" }}>{accent}</span> {tail}
                 </h2>
                 <p className="mt-6" style={{ fontSize: 20, lineHeight: 1.6, color: "var(--color-ink)", maxWidth: "55ch" }}>
                   {lede}
                 </p>
               </div>
+              <div className="md:col-start-3 md:col-span-3 order-3 md:order-none">{card}</div>
             </>
           ) : (
             <>
               <div className="md:col-start-3 md:col-span-5">
-                <h2 className="serif" style={{ fontSize: 44, fontWeight: 700, lineHeight: 1.15, margin: 0 }}>
+                <h2 className="serif" style={{ fontSize: "clamp(30px, 6.5vw, 44px)", fontWeight: 700, lineHeight: 1.15, margin: 0 }}>
                   {heading} <span className="italic" style={{ color: "var(--color-accent)" }}>{accent}</span> {tail}
                 </h2>
                 <p className="mt-6" style={{ fontSize: 20, lineHeight: 1.6, color: "var(--color-ink)", maxWidth: "55ch" }}>
@@ -146,7 +146,7 @@ export default function LandingPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
           >
-            <h1 className="serif" style={{ fontSize: 68, fontWeight: 700, lineHeight: 1.08, letterSpacing: "-0.02em", margin: 0 }}>
+            <h1 className="serif" style={{ fontSize: "clamp(38px, 9vw, 68px)", fontWeight: 700, lineHeight: 1.08, letterSpacing: "-0.02em", margin: 0 }}>
               The developer&apos;s<br />daily brief,<br />
               <span className="italic" style={{ color: "var(--color-accent)" }}>filed automatically.</span>
             </h1>
@@ -259,7 +259,7 @@ export default function LandingPage() {
       <section style={{ borderTop: "1px solid var(--color-hairline)" }}>
         <div className={`${PAGE} py-24 md:py-32`}>
           <Reveal>
-            <h2 className="serif italic" style={{ fontSize: 64, fontWeight: 700, color: "var(--color-accent)", margin: "0 0 32px" }}>
+            <h2 className="serif italic" style={{ fontSize: "clamp(36px, 9vw, 64px)", fontWeight: 700, color: "var(--color-accent)", margin: "0 0 32px" }}>
               Start your brief.
             </h2>
             <SignInPill className="px-8 py-4" label="Get started" />

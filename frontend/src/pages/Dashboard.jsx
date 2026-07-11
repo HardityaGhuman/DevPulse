@@ -333,7 +333,7 @@ export default function Dashboard() {
             {profile?.email ? ` · ${profile.email}` : ""}
             {profile?.created_at ? ` · MEMBER SINCE ${fmtDate(profile.created_at)}` : ""}
           </p>
-          <h1 className="serif" style={{ fontSize: 56, fontWeight: 700, lineHeight: 1.1, letterSpacing: "-0.02em", margin: "12px 0 0" }}>
+          <h1 className="serif" style={{ fontSize: "clamp(34px, 8vw, 56px)", fontWeight: 700, lineHeight: 1.1, letterSpacing: "-0.02em", margin: "12px 0 0" }}>
             Your daily <span className="italic" style={{ color: "var(--color-accent)" }}>brief.</span>
           </h1>
         </Reveal>
