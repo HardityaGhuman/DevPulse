@@ -67,6 +67,18 @@ class DigestResult(BaseModel):
     headline: str
     momentum: Literal["rising", "steady", "declining"]
 
+    # The headline is the ONLY LLM-authored text in the email (rides the preheader + AI Summary).
+    # The prompt asks for <= 140 chars, but a model can ignore that — so hard-cap here rather than
+    # trust it. We TRUNCATE (not reject) so a slightly-long headline still ships instead of failing
+    # validation and dropping the whole digest to the facts-only fallback. Applies to every path
+    # that builds a DigestResult (LLM parse + fallback). 160 = the 140 ask + a little slack.
+    @field_validator("headline", mode="before")
+    @classmethod
+    def _bound_headline(cls, v):
+        limit = 160
+        s = " ".join(str(v).split())  # coerce + collapse whitespace/newlines
+        return (s[: limit - 1].rstrip() + "…") if len(s) > limit else s
+
 
 # ── Digest Schemas ──────────────────────────────────────────────
 
