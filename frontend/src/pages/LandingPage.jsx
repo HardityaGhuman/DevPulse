@@ -78,7 +78,11 @@ function Feature({ num, label, heading, accent, tail, lede, card, flip }) {
 
           {flip ? (
             <>
-              <div className="md:col-start-6 md:col-span-5 order-2 md:order-none">
+              {/* Heading is FIRST in the DOM so mobile (1-col) reads heading -> card. On md+ the
+                  card must sit LEFT of the heading, at an EARLIER column — grid auto-placement is
+                  row-major and can't backtrack, so both need an explicit row-start or the card
+                  falls to row 2. `md:order-none` alone is a tie (order:0 on both) and does not. */}
+              <div className="md:row-start-1 md:col-start-6 md:col-span-5 order-2 md:order-none">
                 <h2 className="serif" style={{ fontSize: "clamp(30px, 6.5vw, 44px)", fontWeight: 700, lineHeight: 1.15, margin: 0 }}>
                   {heading} <span className="italic" style={{ color: "var(--color-accent)" }}>{accent}</span> {tail}
                 </h2>
@@ -86,7 +90,7 @@ function Feature({ num, label, heading, accent, tail, lede, card, flip }) {
                   {lede}
                 </p>
               </div>
-              <div className="md:col-start-3 md:col-span-3 order-3 md:order-none">{card}</div>
+              <div className="md:row-start-1 md:col-start-3 md:col-span-3 order-3 md:order-none">{card}</div>
             </>
           ) : (
             <>

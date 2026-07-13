@@ -244,12 +244,12 @@ def _section_summary(digest: DigestResult, context: DigestContext,
     headline = _emphasize_headline(digest.headline, context)
     return f"""
     <table width="100%" role="presentation" cellpadding="0" cellspacing="0"><tr>
-      <td valign="top" width="56%" style="padding-right:24px;">
+      <td class="dp-stack" valign="top" width="56%" style="padding-right:24px;">
         {_label("1", "AI Summary", _ICON_AI).replace('margin:0 0 16px', 'margin:0 0 24px')}
         <p style="font-family:{_SANS};font-size:22px;line-height:1.25;font-weight:400;color:{_INK};margin:0 0 24px;">{headline}</p>
         {_summary_facts(context, copy)}
       </td>
-      <td valign="top" width="44%">{_mac_card(context, tz)}</td>
+      <td class="dp-stack" valign="top" width="44%">{_mac_card(context, tz)}</td>
     </tr></table>"""
 
 
@@ -345,8 +345,8 @@ def _section_attention(context: DigestContext) -> str:
 def _section_wip_attention(context: DigestContext) -> str:
     return f"""
     <table width="100%" role="presentation" cellpadding="0" cellspacing="0"><tr>
-      <td valign="top" width="50%" style="padding-right:28px;">{_section_wip(context)}</td>
-      <td valign="top" width="50%" style="border-left:1px solid {_HAIR};padding-left:28px;">{_section_attention(context)}</td>
+      <td class="dp-stack" valign="top" width="50%" style="padding-right:28px;">{_section_wip(context)}</td>
+      <td class="dp-stack" valign="top" width="50%" style="border-left:1px solid {_HAIR};padding-left:28px;">{_section_attention(context)}</td>
     </tr></table>"""
 
 
@@ -444,8 +444,20 @@ def _section_stats(context: DigestContext, momentum: str) -> str:
 
 # ── Footer ───────────────────────────────────────────────────────
 
-def _footer() -> str:
+def _unsubscribe_url(token: str | None) -> str | None:
+    """The one-click endpoint on THIS API, or None when we can't build one (no api_base_url /
+    no token) — callers then fall back to the dashboard link."""
+    if not token or not settings.api_base_url:
+        return None
+    return _safe_url(f"{settings.api_base_url.rstrip('/')}/api/unsubscribe/{token}")
+
+
+def _footer(unsub_token: str | None = None) -> str:
     dash = _safe_url(f"{settings.frontend_url}/dashboard")
+    # The footer link is the real unsubscribe when we have a token; the dashboard (where cadence
+    # -> 'off' is the manual opt-out) otherwise. Gmail cross-checks that the visible link and the
+    # List-Unsubscribe header agree — a footer that only points at a login wall reads as evasion.
+    unsub = _unsubscribe_url(unsub_token) or dash
     return f"""
     {_rule()}
     <table width="100%" role="presentation" cellpadding="0" cellspacing="0" style="margin-top:32px;"><tr>
@@ -459,22 +471,27 @@ def _footer() -> str:
       </td>
     </tr></table>
     <p style="font-family:{_MONO};font-size:9px;font-weight:500;color:{_MUTED};letter-spacing:0.1em;text-transform:uppercase;text-align:center;margin:32px 0 0;">
-      You're receiving this because you subscribed to DevPulse. &middot; <a href="{dash}" style="color:{_MUTED};text-decoration:underline;">Unsubscribe</a> &middot; DevPulse &copy; 2026
+      You're receiving this because you subscribed to DevPulse. &middot; <a href="{unsub}" style="color:{_MUTED};text-decoration:underline;">Unsubscribe</a> &middot; DevPulse &copy; 2026
     </p>"""
 
 
 def _build_digest_html(digest: DigestResult, context: DigestContext,
                        period_start: str, period_end: str,
-                       tz: ZoneInfo = _DEFAULT_TZ, frequency: str | None = None) -> str:
+                       tz: ZoneInfo = _DEFAULT_TZ, frequency: str | None = None,
+                       unsub_token: str | None = None) -> str:
     copy = _copy_for(frequency)
     masthead = f"""
     <table width="100%" role="presentation" cellpadding="0" cellspacing="0">
       <tr>
-        <td valign="bottom">
+        <td valign="bottom" width="45%">
           <div style="font-family:{_SERIF};font-size:32px;font-weight:700;color:{_INK};letter-spacing:-0.02em;line-height:1;">DEVPULSE</div>
         </td>
-        <td valign="bottom" align="right" style="white-space:nowrap;">
-          <div style="font-family:{_MONO};font-size:12px;font-weight:500;color:{_INK};letter-spacing:0.1em;">ISSUE 001 &middot; {copy["brief"]}</div>
+        <td valign="bottom" align="right" width="55%">
+          <!-- No white-space:nowrap: the wordmark (32px serif) + this label together exceed a
+               phone's content width, and a nowrap cell can't yield, so the table overflowed and
+               the two collided. Let it wrap instead — it must hold up even where <style> is
+               stripped, so this cannot rely on the media query below. -->
+          <div style="font-family:{_MONO};font-size:12px;font-weight:500;color:{_INK};letter-spacing:0.1em;line-height:1.35;">ISSUE 001 &middot; {copy["brief"]}</div>
         </td>
       </tr>
       <tr>
@@ -489,24 +506,34 @@ def _build_digest_html(digest: DigestResult, context: DigestContext,
     </table>"""
 
     gap = '<div style="height:48px;line-height:48px;font-size:0;">&nbsp;</div>'
+    # Fluid-hybrid shell: a 100%-wide outer table centers a sheet that is width:100% capped at
+    # 640px. The sheet therefore FITS whatever width the client gives it — it never depends on
+    # the client scaling a fixed 640px table down (Gmail's app only does that when the user's
+    # "auto-fit messages" setting is on; with it off, a fixed-640 sheet gets crushed into ~390px
+    # and every cell wraps). Outlook honors the width="100%" attribute; everyone else the CSS.
     body = f"""
-  <table width="640" role="presentation" cellpadding="0" cellspacing="0" align="center"
-         bgcolor="{_BG}" style="max-width:640px;margin:0 auto;background-color:{_BG};">
-    <tr><td style="padding:0;">
-      <div style="border:1px solid {_EDGE};box-shadow:0 1px 2px rgba(0,0,0,0.06),0 14px 40px rgba(0,0,0,0.12);">
-      <div style="padding:32px 32px 16px;">{masthead}</div>
-      <div style="margin:0 32px;">{_rule()}</div>
-      <div style="padding:40px 32px;">
-      {_section_summary(digest, context, tz, copy)}{gap}
-      {_section_shipped(context, copy)}{gap}
-      {_section_wip_attention(context)}{gap}
-      {_section_work_log(context, copy)}{gap}
-      {_section_stats(context, digest.momentum)}
-      </div>
-      <div style="padding:0 32px 48px;">
-      {_footer()}
-      </div>
-      </div>
+  <table width="100%" role="presentation" cellpadding="0" cellspacing="0" bgcolor="{_BG}"
+         style="background-color:{_BG};">
+    <tr><td align="center" style="padding:0;">
+      <table width="100%" role="presentation" cellpadding="0" cellspacing="0" align="center"
+             bgcolor="{_BG}" style="width:100%;max-width:640px;margin:0 auto;background-color:{_BG};">
+        <tr><td style="padding:0;">
+          <div style="border:1px solid {_EDGE};box-shadow:0 1px 2px rgba(0,0,0,0.06),0 14px 40px rgba(0,0,0,0.12);">
+          <div class="dp-pad-t" style="padding:32px 32px 16px;">{masthead}</div>
+          <div class="dp-mar" style="margin:0 32px;">{_rule()}</div>
+          <div class="dp-pad" style="padding:40px 32px;">
+          {_section_summary(digest, context, tz, copy)}{gap}
+          {_section_shipped(context, copy)}{gap}
+          {_section_wip_attention(context)}{gap}
+          {_section_work_log(context, copy)}{gap}
+          {_section_stats(context, digest.momentum)}
+          </div>
+          <div class="dp-pad-b" style="padding:0 32px 48px;">
+          {_footer(unsub_token)}
+          </div>
+          </div>
+        </td></tr>
+      </table>
     </td></tr>
   </table>"""
 
@@ -514,7 +541,7 @@ def _build_digest_html(digest: DigestResult, context: DigestContext,
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=640">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
 <meta name="supported-color-schemes" content="light">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -522,10 +549,23 @@ def _build_digest_html(digest: DigestResult, context: DigestContext,
 <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600;1,700&family=Playfair+Display:wght@700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
   :root {{ color-scheme: light; supported-color-schemes: light; }}
-  body {{ margin:0; padding:0; -webkit-text-size-adjust:100%; background:{_BG}; }}
+  body {{ margin:0; padding:0; -webkit-text-size-adjust:100%; text-size-adjust:100%; background:{_BG}; }}
+  /* Progressive enhancement ONLY — the mail must already be readable without it, because Gmail
+     (and others) strip <style> for some account types. Without it a narrow client still gets a
+     squeezed-but-fitting two-column row; with it, the two-column rows stack and the sheet's
+     32px gutters tighten. Never put COLOR here — colors are inline for exactly that reason. */
+  @media only screen and (max-width:480px) {{
+    .dp-stack {{ display:block !important; width:100% !important;
+                 padding-left:0 !important; padding-right:0 !important;
+                 border-left:0 !important; padding-bottom:28px !important; }}
+    .dp-pad   {{ padding:28px 20px !important; }}
+    .dp-pad-t {{ padding:24px 20px 12px !important; }}
+    .dp-pad-b {{ padding:0 20px 32px !important; }}
+    .dp-mar   {{ margin:0 20px !important; }}
+  }}
 </style>
 </head>
-<body bgcolor="{_BG}" style="margin:0;padding:40px 16px;background-color:{_BG};">
+<body bgcolor="{_BG}" style="margin:0;padding:24px 12px;background-color:{_BG};">
 <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:{_BG};opacity:0;">{_esc(digest.headline)}</div>
 {body}
 </body>
@@ -551,20 +591,33 @@ def _build_digest_text(digest: DigestResult, context: DigestContext) -> str:
     return "\n".join(lines)
 
 
-def _unsubscribe_headers() -> dict:
-    """List-Unsubscribe(+ -Post) tells Gmail/Outlook this is legitimate bulk mail with an easy
-    opt-out — a required signal under Gmail's 2024 bulk-sender rules. We point at the dashboard
-    (where cadence -> 'off' is the opt-out) plus a mailto fallback when a reply-to is set."""
-    targets = [f"<{settings.frontend_url}/dashboard>"]
+def _unsubscribe_headers(unsub_token: str | None = None) -> dict:
+    """Tells Gmail/Outlook this is legitimate bulk mail with a working opt-out — a REQUIRED
+    signal under Gmail's 2024 bulk-sender rules, and one of the reasons a new sending domain
+    lands in spam for recipients who have never engaged with it.
+
+    With a token we emit true ONE-CLICK unsubscribe: an HTTPS URL plus `List-Unsubscribe-Post`,
+    which is what makes Gmail render its own "Unsubscribe" button and POST it for the user (no
+    session — the URL's HMAC is the authorization; see security/unsub_token.py). Without one
+    (no api_base_url configured) we degrade to the old dashboard link and, correctly, DO NOT
+    send List-Unsubscribe-Post: claiming one-click support for a URL that only serves a web page
+    is worse than not claiming it.
+    """
+    one_click = _unsubscribe_url(unsub_token)
+    targets = [f"<{one_click}>"] if one_click else [f"<{settings.frontend_url}/dashboard>"]
     if settings.email_reply_to:
-        targets.insert(0, f"<mailto:{settings.email_reply_to}?subject=unsubscribe>")
-    return {"List-Unsubscribe": ", ".join(targets)}
+        targets.append(f"<mailto:{settings.email_reply_to}?subject=unsubscribe>")
+    headers = {"List-Unsubscribe": ", ".join(targets)}
+    if one_click:
+        headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
+    return headers
 
 
 async def send_digest_email(to: str, subject: str, digest: DigestResult,
                             context: DigestContext, period_start: str, period_end: str,
                             timezone: str | None = None, frequency: str | None = None,
-                            idempotency_key: str | None = None) -> bool:
+                            idempotency_key: str | None = None,
+                            unsub_token: str | None = None) -> bool:
     """Send a digest email via Resend. Returns True on success, False on failure.
 
     `timezone` is the recipient's IANA tz (their saved digest_timezone); the masthead/card
@@ -576,15 +629,19 @@ async def send_digest_email(to: str, subject: str, digest: DigestResult,
     before we stamped `email_sent_at`, the retried request dedupes at Resend (24h window) instead
     of emailing the user twice. We call the REST API directly via httpx because the pinned resend
     SDK (2.6.0) exposes no way to set a custom request header.
+
+    `unsub_token` is the recipient's HMAC unsubscribe token; it drives both the one-click header
+    and the footer link.
     """
     tz = _resolve_tz(timezone)
     payload = {
         "from": settings.email_from,
         "to": [to],
         "subject": subject,
-        "html": _build_digest_html(digest, context, period_start, period_end, tz, frequency),
+        "html": _build_digest_html(digest, context, period_start, period_end, tz, frequency,
+                                   unsub_token),
         "text": _build_digest_text(digest, context),
-        "headers": _unsubscribe_headers(),
+        "headers": _unsubscribe_headers(unsub_token),
     }
     if settings.email_reply_to:
         payload["reply_to"] = settings.email_reply_to

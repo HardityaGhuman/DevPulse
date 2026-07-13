@@ -17,6 +17,7 @@ from app.schemas import DigestContext, DigestResult, WaitingPR, ShippedPR, WorkI
 from app.clients import github, clerk
 from app.services.ai import generate_digest
 from app.services.email import send_digest_email
+from app.security.unsub_token import make_token as make_unsub_token
 from app.database import get_supabase
 
 try:
@@ -252,6 +253,7 @@ async def generate_and_deliver(user: dict) -> dict:
         timezone=user.get("digest_timezone"),
         frequency=user.get("digest_frequency"),
         idempotency_key=f"{user['id']}:{period_key}",
+        unsub_token=make_unsub_token(user["id"]),
     )
 
     stamp = datetime.now(timezone.utc)

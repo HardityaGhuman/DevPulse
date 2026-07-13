@@ -40,5 +40,11 @@ class Settings(BaseSettings):
     # Frontend
     frontend_url: str = "http://localhost:5173"
 
+    # Public URL of THIS API. Needed for the List-Unsubscribe one-click URL, which the mail
+    # client fetches directly — it can't be a relative path or a frontend route. Unset => we
+    # fall back to a dashboard link and skip the one-click header.
+    api_base_url: str = ""
+    unsubscribe_secret: str = ""      # falls back to internal_cron_secret when unset
+
 
 settings = Settings()
