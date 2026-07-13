@@ -5,7 +5,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-005571?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
 [![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com/)
 
-**DevPulse** delivers a neatly formatted digest of your GitHub activity by email — daily or weekly — written by an AI coach. It aims to be a better progress tracker than GitHub's own notifications: accurate contribution counts, streaks, week-over-week momentum, and a nudge on the pull requests waiting on you.
+**DevPulse** delivers a neatly formatted digest of your GitHub activity by email, on a cadence you pick. It aims to be a better progress tracker than GitHub's own notifications: accurate contribution counts, streaks, week-over-week momentum, and a nudge on the pull requests waiting on you. Every figure in the digest is rendered straight from GitHub data — the LLM writes only the one-line headline, so nothing is ever invented.
 
 ---
 
@@ -145,9 +145,9 @@ npm run dev                     # http://localhost:5173
 ```
 
 The frontend reads the API base from `VITE_API_BASE_URL` (defaults to
-`http://localhost:8000`). To point it at the deployed backend, set in `frontend/.env`:
+`http://localhost:8000`). To point it at a deployed backend, set in `frontend/.env`:
 ```
-VITE_API_BASE_URL=https://devpulse-api-813251153590.asia-south1.run.app
+VITE_API_BASE_URL=https://<your-cloud-run-service-url>
 ```
 Auth tokens are Clerk session JWTs, attached automatically by `src/lib/api.js`.
 
@@ -166,5 +166,4 @@ frontend/         React + Vite SPA — landing + dashboard
 ## Status
 
 **Live.** Backend on Cloud Run (GitHub Actions CD), frontend on Vercel. Sign in with GitHub, pick
-a cadence, and the digest arrives by email — there is deliberately no in-app "send now" or preview,
-because a digest you can refresh on demand isn't a digest.
+a cadence, and the digest arrives by email.
