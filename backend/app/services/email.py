@@ -471,7 +471,7 @@ def _footer(unsub_token: str | None = None) -> str:
       </td>
     </tr></table>
     <p style="font-family:{_MONO};font-size:9px;font-weight:500;color:{_MUTED};letter-spacing:0.1em;text-transform:uppercase;text-align:center;margin:32px 0 0;">
-      You're receiving this because you subscribed to DevPulse. &middot; <a href="{unsub}" style="color:{_MUTED};text-decoration:underline;">Unsubscribe</a> &middot; DevPulse &copy; 2026
+      You're receiving this because you subscribed to DevPulse. &middot; <a href="{unsub}" style="color:{_MUTED};text-decoration:underline;">Unsubscribe</a>
     </p>"""
 
 
