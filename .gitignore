@@ -22,6 +22,11 @@ dist/
 # Logs
 *.log
 
+# Test/coverage artifacts
+.coverage
+htmlcov/
+.pytest_cache/
+
 # Local-only context docs (never pushed)
 CLAUDE.md
 PROGRESS.md

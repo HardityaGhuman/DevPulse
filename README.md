@@ -15,8 +15,9 @@ Keeping track of your own development progress is tedious, and GitHub's notifica
 
 ## Key Features
 
-- **Automated Developer Digests** — Opt into daily or weekly email summaries. Facts are rendered directly (counts, deltas, streak, waiting PRs); the LLM adds only a one-line headline and a momentum read — no filler.
-- **Clean, fixed-light email** — a professional, email-safe template (locked to light so dark-mode clients can't invert it into a mess).
+- **Automated Developer Digests** — Opt into a cadence that suits you: `off / 6h / 12h / daily / weekly`, delivered at an hour (and weekday) you choose, in your own timezone. Facts are rendered directly (counts, deltas, streak, waiting PRs); the LLM adds only a one-line headline and a momentum read — no filler.
+- **Opt-in by default** — a new account starts at `off`. DevPulse never emails anyone who didn't ask for it, and every digest carries a one-click unsubscribe.
+- **Clean, email-safe template** — an editorial broadsheet built from tables and inline styles, locked to light so dark-mode clients can't invert it into a mess. Fluid to any width, so it holds up on a phone.
 - **Accurate GitHub Activity** — Uses GitHub's GraphQL `contributionsCollection` API: commits, PRs, issues, reviews, active repos, and current streak — including private repositories.
 - **PRs Waiting On You** — Surfaces open PRs you authored or that request your review, so nothing stalls.
 - **Week-over-Week Momentum** — Compares against your previous digest for real deltas, not guesses.
@@ -66,7 +67,7 @@ flowchart TD
 2. **GitHub access** — The backend fetches the user's GitHub OAuth token **live from Clerk** for each request and holds it in memory only — it is never persisted.
 3. **Digest generation** — Activity is assembled into a typed context and passed to the LLM layer via **LiteLLM** (model-agnostic). The prompt follows the PTCF framework; output is validated against a strict schema.
 4. **Persistence** — Digests are stored in PostgreSQL (Supabase), one row per period.
-5. **Scheduled delivery** — an external cron (cron-job.org) calls a shared-secret-protected internal endpoint daily. The backend selects due users (daily every day, weekly on their chosen day), generates each digest, and emails it via Resend.
+5. **Scheduled delivery** — an external cron (cron-job.org) calls a shared-secret-protected internal endpoint **at least hourly**. The backend selects the users who are due *at that hour in their own timezone*, fans them out through Cloud Tasks (one retryable task each, so one failure can't block the rest), and emails each digest via Resend. Delivery is idempotent per window: a retry after a successful send can't email anyone twice.
 
 ### Tech stack
 
@@ -76,11 +77,12 @@ flowchart TD
 
 ### Security highlights
 
-- **JWT auth via Clerk** — Signature (RS256/JWKS), issuer, and TTL-cached keys; generic errors.
+- **JWT auth via Clerk** — Signature (RS256/JWKS), exact issuer match, TTL-cached keys; generic errors. Fails **closed** if the issuer is unconfigured.
 - **Signed webhooks** — The Clerk user-sync webhook requires a valid Svix signature.
 - **No stored secrets** — GitHub tokens are fetched live from Clerk, never written to the DB.
 - **Rate limiting** — Per-user limits on the LLM and email endpoints.
 - **RLS backstop** — Row Level Security enabled; the backend uses the service role.
+- **Capability-scoped unsubscribe** — `/api/unsubscribe/{token}` is the one unauthenticated route (mail clients POST it with no session). The URL carries an HMAC token; the only thing it can do is set that one user's cadence to `off`.
 
 ---
 
@@ -108,7 +110,11 @@ scheduler):
 - URL: `<service-url>/internal/run-digests`
 - Method: `POST`
 - Header: `X-Internal-Secret: <INTERNAL_CRON_SECRET>`
-- Schedule: daily, e.g. 08:00
+- Schedule: **hourly** (`0 * * * *`)
+
+The cron **must run at least hourly** — it is the clock for every cadence. Users pick a delivery
+hour in their own timezone, and `run_all` only sends to those whose chosen hour is the current
+one. A daily cron would strand every user who didn't pick that exact hour.
 
 Any HTTP scheduler works — the endpoint just needs the secret header. (Google Cloud Scheduler
 is a fine alternative if you prefer staying inside GCP.)
@@ -148,17 +154,17 @@ Auth tokens are Clerk session JWTs, attached automatically by `src/lib/api.js`.
 ## Project Layout
 
 ```
-backend/          FastAPI service (see app/ structure below)
-  app/security/   Clerk JWT, Svix webhook, cron-secret guards
+backend/          FastAPI service
+  app/security/   Clerk JWT, Svix webhook, cron-secret, unsubscribe-token guards
   app/clients/    external APIs — Clerk, GitHub GraphQL
   app/services/   ai (LiteLLM), digest orchestration, Resend email
-  app/routers/    users, digest, github, internal (cron)
+  app/routers/    users, digest, github, internal (cron), unsubscribe
 database/         schema.sql (fresh) + migration.sql (upgrade)
-frontend/         React + Vite SPA (next up for a UI pass)
+frontend/         React + Vite SPA — landing + dashboard
 ```
 
-## Status & Next Steps
+## Status
 
-Backend + auth are refactored, secured, and deployed on Cloud Run via automated GitHub Actions CD. We have comprehensive test coverage for core services, structured logging, and observability metrics in place. Digest frequency is interval-based (`off / 6h / 12h / daily / weekly`); a single cron fans out to whoever's due, with support for Google Cloud Tasks queueing.
-
-**Next phase: Host this service so that other users can access freely** 
+**Live.** Backend on Cloud Run (GitHub Actions CD), frontend on Vercel. Sign in with GitHub, pick
+a cadence, and the digest arrives by email — there is deliberately no in-app "send now" or preview,
+because a digest you can refresh on demand isn't a digest.
