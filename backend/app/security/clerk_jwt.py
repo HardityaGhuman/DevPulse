@@ -7,10 +7,13 @@ library internals leak to the client.
 """
 
 import time
+import logging
 import httpx
 from fastapi import HTTPException, status
 from jose import jwt, JWTError
 from app.config import settings
+
+logger = logging.getLogger("devpulse.auth")
 
 _JWKS_TTL = 3600  # seconds
 _jwks_cache: dict | None = None
@@ -37,6 +40,13 @@ def _find_key(jwks: dict, kid: str | None) -> dict | None:
 
 async def verify_clerk_jwt(token: str) -> dict:
     """Return decoded claims, or raise HTTPException(401). Never leak internals."""
+    # Fail CLOSED on a missing issuer. jose silently SKIPS the issuer check when `issuer=None`,
+    # so an empty CLERK_ISSUER env would accept any token another Clerk instance signed with a
+    # key our JWKS URL happens to serve. Misconfiguration must 503, never authenticate.
+    if not settings.clerk_issuer:
+        logger.error("[auth] CLERK_ISSUER is not set — refusing to verify tokens")
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Auth service unavailable")
+
     try:
         kid = jwt.get_unverified_header(token).get("kid")
         jwks = await _get_jwks()
@@ -51,7 +61,7 @@ async def verify_clerk_jwt(token: str) -> dict:
             token,
             key,
             algorithms=["RS256"],
-            issuer=settings.clerk_issuer or None,
+            issuer=settings.clerk_issuer,
             # Clerk session tokens carry the app in `azp`, not always `aud`; the issuer
             # check is the strong guarantee. Enable audience if you set it in a JWT template.
             options={"verify_aud": False},

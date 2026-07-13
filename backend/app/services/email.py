@@ -33,7 +33,7 @@ import logging
 import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
-import resend
+import httpx
 from app.config import settings
 from app.schemas import DigestResult, DigestContext
 
@@ -563,27 +563,41 @@ def _unsubscribe_headers() -> dict:
 
 async def send_digest_email(to: str, subject: str, digest: DigestResult,
                             context: DigestContext, period_start: str, period_end: str,
-                            timezone: str | None = None, frequency: str | None = None) -> bool:
+                            timezone: str | None = None, frequency: str | None = None,
+                            idempotency_key: str | None = None) -> bool:
     """Send a digest email via Resend. Returns True on success, False on failure.
 
     `timezone` is the recipient's IANA tz (their saved digest_timezone); the masthead/card
     delivery clock renders in it. Falls back to IST when unset/invalid. `frequency` selects the
     window-relative copy (labels/verbs) so the wording matches the digest's actual window.
+
+    `idempotency_key` (e.g. `{user_id}:{period_key}`) is sent as Resend's `Idempotency-Key`
+    header — Cloud Tasks delivers at-least-once, so if a prior attempt already sent but crashed
+    before we stamped `email_sent_at`, the retried request dedupes at Resend (24h window) instead
+    of emailing the user twice. We call the REST API directly via httpx because the pinned resend
+    SDK (2.6.0) exposes no way to set a custom request header.
     """
     tz = _resolve_tz(timezone)
+    payload = {
+        "from": settings.email_from,
+        "to": [to],
+        "subject": subject,
+        "html": _build_digest_html(digest, context, period_start, period_end, tz, frequency),
+        "text": _build_digest_text(digest, context),
+        "headers": _unsubscribe_headers(),
+    }
+    if settings.email_reply_to:
+        payload["reply_to"] = settings.email_reply_to
+
+    req_headers = {"Authorization": f"Bearer {settings.resend_api_key}",
+                   "Content-Type": "application/json"}
+    if idempotency_key:
+        req_headers["Idempotency-Key"] = idempotency_key
     try:
-        resend.api_key = settings.resend_api_key
-        payload = {
-            "from": settings.email_from,
-            "to": [to],
-            "subject": subject,
-            "html": _build_digest_html(digest, context, period_start, period_end, tz, frequency),
-            "text": _build_digest_text(digest, context),
-            "headers": _unsubscribe_headers(),
-        }
-        if settings.email_reply_to:
-            payload["reply_to"] = settings.email_reply_to
-        resend.Emails.send(payload)
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post("https://api.resend.com/emails",
+                                     json=payload, headers=req_headers)
+            resp.raise_for_status()
         return True
     except Exception as e:
         logger.error("[email] failed to send digest to %s: %s", to, e)

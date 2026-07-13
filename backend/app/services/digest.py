@@ -251,6 +251,7 @@ async def generate_and_deliver(user: dict) -> dict:
         period_start=context.period_start, period_end=context.period_end,
         timezone=user.get("digest_timezone"),
         frequency=user.get("digest_frequency"),
+        idempotency_key=f"{user['id']}:{period_key}",
     )
 
     stamp = datetime.now(timezone.utc)
@@ -279,6 +280,15 @@ async def process_single_user(user_id: str) -> dict:
         return {"user_id": user_id, "sent": result["email_sent"]}
     except Exception as e:
         logger.error("[digest] failed for %s: %s", user.get("email"), e, exc_info=True)
+        # Stamp the attempt so a permanently-broken user (revoked/disconnected GitHub token)
+        # doesn't stay "due" forever and get re-enqueued on EVERY hourly cron tick. Cloud Tasks
+        # still retries THIS enqueue (we re-raise); this only stops the cron from piling on.
+        try:
+            supabase.table("users").update(
+                {"last_digest_at": datetime.now(timezone.utc).isoformat()}
+            ).eq("id", user_id).execute()
+        except Exception:
+            logger.error("[digest] could not stamp last_digest_at for %s", user_id)
         raise
 
 

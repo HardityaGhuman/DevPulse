@@ -1,4 +1,6 @@
+import pytest
 from app.schemas import DigestResult, DigestContext, WaitingPR, ShippedPR, WorkItem
+from app.services import email as email_svc
 from app.services.email import _build_digest_html, _delivery_date
 
 CTX = DigestContext(
@@ -111,3 +113,67 @@ def test_work_log_drops_merges_and_caps_with_overflow():
 def test_shipped_prs_cap_with_overflow():
     html = _build_digest_html(RES, _bulk_ctx(), "2026-06-25", "2026-07-02", frequency="weekly")
     assert "3 more merged" in html                     # 9 shipped, cap 6 -> 3 overflow
+
+
+@pytest.mark.asyncio
+async def test_send_passes_idempotency_key_header(monkeypatch):
+    """Cloud Tasks is at-least-once; a retry after a send that crashed before stamping
+    email_sent_at must dedupe at Resend, not email the user twice."""
+    captured = {}
+
+    class _Resp:
+        def raise_for_status(self):
+            pass
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, url, json, headers):
+            captured["url"] = url
+            captured["json"] = json
+            captured["headers"] = headers
+            return _Resp()
+
+    monkeypatch.setattr(email_svc.httpx, "AsyncClient", lambda **kw: _Client())
+
+    ok = await email_svc.send_digest_email(
+        to="me@example.com", subject="s", digest=RES, context=CTX,
+        period_start="2026-07-01", period_end="2026-07-02",
+        idempotency_key="user-1:daily:2026-07-02",
+    )
+    assert ok is True
+    assert captured["url"] == "https://api.resend.com/emails"
+    assert captured["headers"]["Idempotency-Key"] == "user-1:daily:2026-07-02"
+    assert captured["json"]["to"] == ["me@example.com"]
+
+
+@pytest.mark.asyncio
+async def test_send_without_key_omits_header(monkeypatch):
+    captured = {}
+
+    class _Resp:
+        def raise_for_status(self):
+            pass
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, url, json, headers):
+            captured.update(headers)
+            return _Resp()
+
+    monkeypatch.setattr(email_svc.httpx, "AsyncClient", lambda **kw: _Client())
+    ok = await email_svc.send_digest_email(
+        to="me@example.com", subject="s", digest=RES, context=CTX,
+        period_start="2026-07-01", period_end="2026-07-02",
+    )
+    assert ok is True
+    assert "Idempotency-Key" not in captured

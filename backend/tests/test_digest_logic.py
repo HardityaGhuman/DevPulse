@@ -164,3 +164,58 @@ async def test_build_context_populates_shipped_work_log_and_merged(monkeypatch):
     assert ctx.shipped_prs[0].number == 21
     assert ctx.work_log[0].headline == "Added memory adapter"
     assert ctx.deltas["prs_merged"] == 4             # 6 - previous 2
+
+
+class _FakeTable:
+    """Records the update payloads a table receives; select() returns `rows`."""
+
+    def __init__(self, name, rows, log):
+        self.name, self.rows, self.log = name, rows, log
+
+    def select(self, *a, **k):
+        return self
+
+    def eq(self, *a, **k):
+        return self
+
+    def limit(self, *a, **k):
+        return self
+
+    def order(self, *a, **k):
+        return self
+
+    def update(self, payload):
+        self.log.append((self.name, payload))
+        return self
+
+    def execute(self):
+        return type("R", (), {"data": self.rows})()
+
+
+class _FakeSupabase:
+    def __init__(self, users, log):
+        self.users, self.log = users, log
+
+    def table(self, name):
+        return _FakeTable(name, self.users if name == "users" else [], self.log)
+
+
+@pytest.mark.asyncio
+async def test_failed_user_still_stamps_last_digest_at(monkeypatch):
+    """A revoked GitHub token must not leave the user permanently 'due' — otherwise the hourly
+    cron re-enqueues them forever. The failure path stamps last_digest_at, then re-raises so
+    Cloud Tasks still retries this enqueue."""
+    log = []
+    user = {"id": "u1", "clerk_id": "c1", "email": "me@x.com"}
+    monkeypatch.setattr(d, "get_supabase", lambda: _FakeSupabase([user], log))
+
+    async def _boom(clerk_id):
+        raise RuntimeError("token revoked")
+
+    monkeypatch.setattr(d.clerk, "fetch_github_token", _boom)
+
+    with pytest.raises(RuntimeError):
+        await d.process_single_user("u1")
+
+    assert [t for t, p in log] == ["users"]
+    assert "last_digest_at" in log[0][1]
