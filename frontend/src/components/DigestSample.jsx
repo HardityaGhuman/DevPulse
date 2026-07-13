@@ -15,7 +15,7 @@ const STREAK = "#EA580C";
 const SAMPLE = {
   dateline: "ISSUE 001 · DAILY BRIEF",
   facts: ["You merged 5 pull requests today.", "2 items need your attention."],
-  waiting: { repo: "me/aria", number: 124, title: "Refactor auth flow", add: 254, del: 120, files: 14 },
+  waiting: { repo: "acme/webapp", number: 124, title: "Refactor auth flow", add: 254, del: 120, files: 14 },
   stats: [
     { label: "PRS OPENED", value: 8, delta: "+1" },
     { label: "PRS MERGED", value: 6, delta: "-1" },
@@ -72,7 +72,7 @@ export default function DigestSample() {
         <p className="mono mt-6" style={{ color: "var(--color-accent)", fontSize: 11 }}>✦ AI Summary</p>
         <h3 className="serif mt-3" style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.25, margin: 0 }}>
           A strong day of shipping on{" "}
-          <span className="italic" style={{ color: "var(--color-accent)" }}>aria.</span>
+          <span className="italic" style={{ color: "var(--color-accent)" }}>webapp.</span>
         </h3>
         <div className="mt-3 flex flex-col gap-1">
           {SAMPLE.facts.map((f) => (

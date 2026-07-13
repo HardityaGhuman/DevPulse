@@ -82,7 +82,7 @@ function Feature({ num, label, heading, accent, tail, lede, card, flip }) {
                   card must sit LEFT of the heading, at an EARLIER column — grid auto-placement is
                   row-major and can't backtrack, so both need an explicit row-start or the card
                   falls to row 2. `md:order-none` alone is a tie (order:0 on both) and does not. */}
-              <div className="md:row-start-1 md:col-start-6 md:col-span-5 order-2 md:order-none">
+              <div className="md:row-start-1 md:col-start-7 md:col-span-5 order-2 md:order-none">
                 <h2 className="serif" style={{ fontSize: "clamp(30px, 6.5vw, 44px)", fontWeight: 700, lineHeight: 1.15, margin: 0 }}>
                   {heading} <span className="italic" style={{ color: "var(--color-accent)" }}>{accent}</span> {tail}
                 </h2>
@@ -186,7 +186,7 @@ export default function LandingPage() {
               <span className="mono">GraphQL · synced 2 min ago</span>
             </div>
             <div className="flex flex-col gap-2">
-              {["me/aria", "acme/api-services", "me/dotfiles"].map((r) => (
+              {["acme/webapp", "acme/api-services", "acme/dotfiles"].map((r) => (
                 <span key={r} className="mono" style={{ textTransform: "none", fontSize: 13 }}>{r}</span>
               ))}
             </div>
@@ -201,7 +201,7 @@ export default function LandingPage() {
         lede="Review-requested and your own open PRs, oldest first, with size and status flags so you know exactly what to touch."
         card={
           <MiniCard>
-            <p className="mono" style={{ color: "var(--color-muted)" }}>me/aria #124</p>
+            <p className="mono" style={{ color: "var(--color-muted)" }}>acme/webapp #124</p>
             <p style={{ fontWeight: 600 }}>Refactor auth</p>
             <div className="mono flex gap-3" style={{ fontSize: 12, textTransform: "none" }}>
               <span style={{ color: "var(--color-ok)" }}>+254</span>
@@ -250,7 +250,7 @@ export default function LandingPage() {
           <MiniCard>
             <p className="mono">Tracked</p>
             <div className="flex flex-col gap-2">
-              {["me/aria", "core-libs"].map((r) => (
+              {["acme/webapp", "acme/core-libs"].map((r) => (
                 <span key={r} className="mono" style={{ textTransform: "none", fontSize: 13, padding: "4px 8px", background: "#fff", border: "1px solid var(--color-hairline)", borderRadius: 6 }}>{r}</span>
               ))}
             </div>
