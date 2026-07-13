@@ -544,8 +544,10 @@ def _build_digest_html(digest: DigestResult, context: DigestContext,
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
 <meta name="supported-color-schemes" content="light">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- NO <link rel="preconnect"> here. Mail clients ignore preconnect entirely, but spam scanners
+     crawl every href in the document: the bare origins https://fonts.googleapis.com and
+     https://fonts.gstatic.com both return 404, so they scored as TWO BROKEN LINKS (-2.0 on
+     mail-tester, 2026-07-13). The stylesheet URL below returns 200 and is the only one we need. -->
 <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600;1,700&family=Playfair+Display:wght@700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
   :root {{ color-scheme: light; supported-color-schemes: light; }}
