@@ -30,7 +30,6 @@ logger = structlog.get_logger("devpulse.digest")
 _DELTA_KEYS = ("commits", "prs_opened", "prs_merged", "issues_opened", "reviews")
 _INTERVAL_HOURS = {"6h": 6, "12h": 12, "daily": 24, "weekly": 168}
 _CACHE_TTL = timedelta(hours=1)
-_DUE_GRACE = timedelta(minutes=30)
 _WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 _DEFAULT_HOUR = 8
 
@@ -48,6 +47,14 @@ def _parse_ts(value) -> datetime | None:
     return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
 
 
+def _tz(user: dict) -> ZoneInfo:
+    """The user's timezone, falling back to UTC on a missing or unparseable name."""
+    try:
+        return ZoneInfo(user.get("digest_timezone") or "UTC")
+    except Exception:
+        return ZoneInfo("UTC")
+
+
 def _is_due(user: dict, last: datetime | None, now: datetime) -> bool:
     """Whether this user should receive a digest at `now` (UTC).
 
@@ -58,44 +65,31 @@ def _is_due(user: dict, last: datetime | None, now: datetime) -> bool:
     which made sub-daily send times unpredictable.
     """
     freq = user.get("digest_frequency")
+    if freq not in _INTERVAL_HOURS:         # off / unknown
+        return False
+
+    local = now.astimezone(_tz(user))
+    anchor = _DEFAULT_HOUR if user.get("digest_hour") is None else int(user.get("digest_hour"))
 
     if freq in ("6h", "12h"):
         interval = _INTERVAL_HOURS[freq]
-        try:
-            tz = ZoneInfo(user.get("digest_timezone") or "UTC")
-        except Exception:
-            tz = ZoneInfo("UTC")
-        local = now.astimezone(tz)
-        anchor = _DEFAULT_HOUR if user.get("digest_hour") is None else int(user.get("digest_hour"))
         send_hours = {(anchor + k * interval) % 24 for k in range(24 // interval)}
         if local.hour not in send_hours:
             return False
-        # At an anchored hour: fire, but guard against a second fire in the same window
-        # (e.g. two cron ticks within the hour) via the elapsed-interval check.
-        if last is None:
-            return True
-        return (now - last) >= (timedelta(hours=interval) - _DUE_GRACE)
-
-    if freq not in ("daily", "weekly"):     # off / unknown
-        return False
-
-    try:
-        tz = ZoneInfo(user.get("digest_timezone") or "UTC")
-    except Exception:
-        tz = ZoneInfo("UTC")
-    local = now.astimezone(tz)
-    hour = user.get("digest_hour")
-    if local.hour != (_DEFAULT_HOUR if hour is None else int(hour)):
-        return False
-
-    if freq == "weekly":
-        day = (user.get("digest_day") or "monday").lower()
-        if _WEEKDAYS[local.weekday()] != day:
+    else:
+        if local.hour != anchor:
             return False
-        return last is None or (now - last) >= timedelta(days=6)
+        if freq == "weekly" and _WEEKDAYS[local.weekday()] != (user.get("digest_day") or "monday").lower():
+            return False
 
-    # daily — at most once per local calendar day
-    return last is None or last.astimezone(tz).date() < local.date()
+    # At an anchored slot: send once per digest WINDOW, keyed on the same period identity the
+    # send path uses. Deciding on elapsed hours instead (the old `now - last >= interval - grace`)
+    # measured against a last_digest_at produced under the user's PREVIOUS anchor, so moving
+    # digest_hour could land the new slot inside that window and silently swallow the first send
+    # on the new schedule — a 12h user who moved 13:00 → midnight was only 11h out and got
+    # skipped. Every anchor maps its slots to distinct period keys, so this still admits exactly
+    # one send per slot even if the cron ticks twice within the hour.
+    return last is None or _period_key(user, last) != _period_key(user, now)
 
 
 def _period_key(user: dict, now: datetime) -> str:
@@ -108,11 +102,7 @@ def _period_key(user: dict, now: datetime) -> str:
     sub-daily cadences. Bucketed in the user's own timezone so it aligns with `_is_due`.
     """
     freq = user.get("digest_frequency") or "daily"
-    try:
-        tz = ZoneInfo(user.get("digest_timezone") or "UTC")
-    except Exception:
-        tz = ZoneInfo("UTC")
-    local = now.astimezone(tz)
+    local = now.astimezone(_tz(user))
     if freq in ("6h", "12h"):
         block = local.hour // _INTERVAL_HOURS[freq]
         return f"{freq}:{local.date().isoformat()}:{block}"
@@ -236,11 +226,7 @@ async def generate_and_deliver(user: dict) -> dict:
     # distinct per window — date for daily/weekly, plus the send clock for sub-daily cadences —
     # so Gmail doesn't collapse separate sends into one thread.
     freq = user.get("digest_frequency") or "daily"
-    try:
-        subj_tz = ZoneInfo(user.get("digest_timezone") or "UTC")
-    except Exception:
-        subj_tz = ZoneInfo("UTC")
-    local = now.astimezone(subj_tz)
+    local = now.astimezone(_tz(user))
     nice_date = f"{local:%b} {local.day}"                 # e.g. "Jul 10" (no zero-pad, portable)
     label = {"daily": "Daily Brief", "weekly": "Weekly Brief"}.get(freq, "Brief")
     if freq in ("6h", "12h"):

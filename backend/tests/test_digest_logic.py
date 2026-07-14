@@ -55,20 +55,39 @@ def test_is_due_6h_off_anchor_hour():
     assert d._is_due(_u(freq="6h", digest_hour=8, digest_timezone="UTC"), None, NOW) is False
 
 
-def test_is_due_6h_elapsed_enough_at_anchor():
+def test_is_due_6h_at_anchor_after_previous_window():
     u = _u(freq="6h", digest_hour=12, digest_timezone="UTC")   # sends 12/18/00/06
     assert d._is_due(u, NOW - timedelta(hours=6), NOW) is True
 
 
-def test_is_due_6h_within_grace_at_anchor():
+def test_is_due_6h_at_anchor_when_cron_ran_late_in_previous_window():
+    # Previous send landed at 06:20 (cron tick a little past its slot). The 12:00 slot is a new
+    # window, so it fires — no elapsed-time threshold to fall short of.
     u = _u(freq="6h", digest_hour=12, digest_timezone="UTC")
-    assert d._is_due(u, NOW - timedelta(hours=5, minutes=40), NOW) is True   # 5h40 >= 6h-30min
+    assert d._is_due(u, NOW - timedelta(hours=5, minutes=40), NOW) is True
 
 
-def test_is_due_6h_too_soon_same_window():
-    # at an anchor hour but only 2h since last send -> guard blocks a second fire
+def test_is_due_6h_not_twice_in_same_window():
+    # Two cron ticks inside the same anchored hour must produce exactly one send.
     u = _u(freq="6h", digest_hour=12, digest_timezone="UTC")
-    assert d._is_due(u, NOW - timedelta(hours=2), NOW) is False
+    second_tick = datetime(2026, 7, 2, 12, 45, tzinfo=timezone.utc)
+    already_sent = datetime(2026, 7, 2, 12, 5, tzinfo=timezone.utc)
+    assert d._is_due(u, already_sent, second_tick) is False
+
+
+def test_is_due_12h_fires_at_new_anchor_soon_after_previous_send():
+    """Moving digest_hour must not swallow the first send on the new schedule.
+
+    Regression: the due-check used to require `interval - 30min` of elapsed time since
+    last_digest_at — a value produced under the OLD anchor. A 12h user last sent at 13:00 IST
+    who moves their anchor to midnight is only 11h past that send when midnight arrives, so
+    they were silently skipped. Windows, not elapsed hours, decide.
+    """
+    u = _u(freq="12h", digest_hour=0, digest_timezone="Asia/Kolkata")
+    last = datetime(2026, 7, 13, 7, 30, 56, tzinfo=timezone.utc)    # 13:00 IST, old anchor
+    midnight_ist = datetime(2026, 7, 13, 18, 30, tzinfo=timezone.utc)  # 00:00 IST, new anchor
+    assert (midnight_ist - last) < timedelta(hours=11, minutes=30)   # under the old guard
+    assert d._is_due(u, last, midnight_ist) is True
 
 
 def test_is_due_6h_respects_timezone_anchor():
@@ -122,6 +141,16 @@ def test_weekly_not_twice_in_week():
     thu = _u(freq="weekly", digest_hour=12, digest_day="thursday", digest_timezone="UTC")
     assert d._is_due(thu, NOW - timedelta(days=2), NOW) is False
     assert d._is_due(thu, NOW - timedelta(days=7), NOW) is True
+
+
+def test_weekly_fires_after_moving_the_day_earlier():
+    # Same anchor-change bug in the weekly branch: last send Friday (Jul 3 is not yet reached,
+    # so use the prior week's Friday), user moves the day to Thursday -> the Thursday that is
+    # only 6 days later must still fire. Old code required >= 6 days AND would drop a same-week
+    # move; the window check fires because it is a new ISO week.
+    thu = _u(freq="weekly", digest_hour=12, digest_day="thursday", digest_timezone="UTC")
+    last_friday = datetime(2026, 6, 26, 12, 0, tzinfo=timezone.utc)   # ISO week 26
+    assert d._is_due(thu, last_friday, NOW) is True                   # NOW = Thu Jul 2, week 27
 
 
 def test_cache_fresh():
