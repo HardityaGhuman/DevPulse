@@ -276,7 +276,7 @@ export default function LandingPage() {
       <footer className={`${PAGE} pb-10`}>
         <div className="rule pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
           <div className="serif" style={{ fontSize: 24, fontWeight: 700 }}>DEVPULSE</div>
-          <div className="flex gap-6">
+          <div className="flex gap-6 items-center">
             <a className="mono" href="https://github.com/HardityaGhuman/DevPulse" target="_blank" rel="noreferrer">GitHub</a>
             <PrivacyNote className="mono" />
           </div>

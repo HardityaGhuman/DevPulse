@@ -105,11 +105,11 @@ export default function PrivacyNote({ children, className = "", style = {} }) {
               <div className="rule" style={{ marginTop: 18, paddingTop: 18 }}>
                 <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gap: 12 }}>
                   <li style={{ fontSize: 14, lineHeight: 1.55 }}>
-                    I store your email, GitHub username, and the activity summarized
+                    DevPulse stores your email, GitHub username, and the activity it summarizes
                     (commits, PRs, streaks) plus the repos you choose to track.
                   </li>
                   <li style={{ fontSize: 14, lineHeight: 1.55 }}>
-                    I <strong>never store your GitHub token</strong> — it's fetched live per
+                    Your <strong>GitHub token is never stored</strong> — it's fetched live per
                     request and discarded.
                   </li>
                   <li style={{ fontSize: 14, lineHeight: 1.55 }}>
