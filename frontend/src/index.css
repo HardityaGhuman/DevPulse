@@ -84,13 +84,19 @@
     border-top: 1px solid var(--color-hairline);
   }
 
-  /* Reset a <button> back to inline text so it can act as a link/custom trigger. */
+  /* Reset a <button> back to inline text so it can act as a link/custom trigger.
+     No `font: inherit` — that would clobber a .mono/.serif class on the same
+     element and shift its baseline out of line with sibling links. */
   .dp-linkreset {
+    display: inline-flex;
+    align-items: center;
     background: none;
     border: 0;
+    margin: 0;
     padding: 0;
     cursor: pointer;
-    font: inherit;
+    line-height: inherit;
+    letter-spacing: inherit;
     color: inherit;
   }
 
