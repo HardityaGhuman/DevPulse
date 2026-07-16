@@ -1,7 +1,10 @@
 /*
-  DevPulse — Privacy note. A small footer link that opens a compact modal
-  with the plain-language privacy summary. Not a full page — intentionally a
-  lightweight overlay. Closes on X, click-outside, or Escape.
+  DevPulse — Privacy note. A small trigger that opens a compact modal with the
+  plain-language privacy summary. Not a full page — intentionally a lightweight
+  overlay. Closes on X, click-outside, or Escape.
+
+  The trigger is whatever `children` the caller passes (defaults to "Privacy"),
+  wrapped in a reset button so any element can act as the opener.
 */
 
 import { useEffect, useState } from "react";
@@ -10,7 +13,7 @@ import { X } from "lucide-react";
 
 const CONTACT = "ghumanharditya@gmail.com";
 
-export default function PrivacyNote({ className = "", style = {} }) {
+export default function PrivacyNote({ children, className = "", style = {} }) {
   const [open, setOpen] = useState(false);
 
   // Close on Escape while open.
@@ -26,10 +29,10 @@ export default function PrivacyNote({ className = "", style = {} }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={`mono ${className}`}
-        style={{ background: "none", border: 0, cursor: "pointer", padding: 0, ...style }}
+        className={`dp-linkreset ${className}`}
+        style={style}
       >
-        Privacy
+        {children ?? <span className="mono">Privacy</span>}
       </button>
 
       <AnimatePresence>
@@ -102,11 +105,11 @@ export default function PrivacyNote({ className = "", style = {} }) {
               <div className="rule" style={{ marginTop: 18, paddingTop: 18 }}>
                 <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gap: 12 }}>
                   <li style={{ fontSize: 14, lineHeight: 1.55 }}>
-                    We store your email, GitHub username, and the activity we summarize
+                    I store your email, GitHub username, and the activity summarized
                     (commits, PRs, streaks) plus the repos you choose to track.
                   </li>
                   <li style={{ fontSize: 14, lineHeight: 1.55 }}>
-                    We <strong>never store your GitHub token</strong> — it's fetched live per
+                    I <strong>never store your GitHub token</strong> — it's fetched live per
                     request and discarded.
                   </li>
                   <li style={{ fontSize: 14, lineHeight: 1.55 }}>
@@ -118,7 +121,7 @@ export default function PrivacyNote({ className = "", style = {} }) {
                     in, and every email has one-click unsubscribe.
                   </li>
                   <li style={{ fontSize: 14, lineHeight: 1.55 }}>
-                    Want your data deleted? Email us and it's gone.
+                    Want your data deleted? Email me and it's gone.
                   </li>
                 </ul>
               </div>

@@ -551,18 +551,15 @@ export default function Dashboard() {
           <footer className={`${PAGE} py-12`} style={{ borderTop: "1px solid var(--color-hairline)" }}>
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
-                <p className="serif italic flex items-center gap-2" style={{ fontSize: 15, fontWeight: 700, color: "var(--color-accent)", margin: 0 }}>
+                <PrivacyNote className="dp-privacy-btn">
                   <Lock size={14} strokeWidth={2.4} aria-hidden="true" />
-                  Private by design.
-                </p>
-                <p className="mt-1" style={{ fontSize: 13, color: "var(--color-muted)", maxWidth: "40ch" }}>
-                  We read only the GitHub you approve. Your code never leaves your repos.
+                  <span className="serif italic" style={{ fontSize: 15, fontWeight: 700 }}>Private by design.</span>
+                </PrivacyNote>
+                <p className="mt-2" style={{ fontSize: 13, color: "var(--color-muted)", maxWidth: "40ch" }}>
+                  DevPulse reads only the GitHub you approve. Your code never leaves your repos.
                 </p>
               </div>
-              <div className="flex flex-col md:items-end gap-2">
-                <div className="serif" style={{ fontSize: 20, fontWeight: 700 }}>DEVPULSE</div>
-                <PrivacyNote style={{ fontSize: 12, color: "var(--color-muted)" }} className="" />
-              </div>
+              <div className="serif" style={{ fontSize: 20, fontWeight: 700 }}>DEVPULSE</div>
             </div>
           </footer>
         </>

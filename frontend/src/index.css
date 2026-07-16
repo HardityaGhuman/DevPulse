@@ -84,6 +84,32 @@
     border-top: 1px solid var(--color-hairline);
   }
 
+  /* Reset a <button> back to inline text so it can act as a link/custom trigger. */
+  .dp-linkreset {
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+  }
+
+  /* Ghost pill — gives a text trigger a clear "this is a button" affordance. */
+  .dp-privacy-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid color-mix(in srgb, var(--color-accent) 30%, transparent);
+    border-radius: 9999px;
+    padding: 7px 14px;
+    color: var(--color-accent);
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .dp-privacy-btn:hover {
+    background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+    border-color: var(--color-accent);
+  }
+
   /* Frosted glass — semi-transparent over the background glows. */
   .glass {
     background: rgba(255, 255, 255, 0.45);

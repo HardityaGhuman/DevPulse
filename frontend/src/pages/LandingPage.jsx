@@ -278,7 +278,7 @@ export default function LandingPage() {
           <div className="serif" style={{ fontSize: 24, fontWeight: 700 }}>DEVPULSE</div>
           <div className="flex gap-6">
             <a className="mono" href="https://github.com/HardityaGhuman/DevPulse" target="_blank" rel="noreferrer">GitHub</a>
-            <PrivacyNote />
+            <PrivacyNote className="mono" />
           </div>
           <div className="mono" style={{ color: "var(--color-muted)" }}>2026 · built for developers</div>
         </div>
