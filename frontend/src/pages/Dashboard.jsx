@@ -21,6 +21,7 @@ import { UserButton, useClerk } from "@clerk/clerk-react";
 import { Lock } from "lucide-react";
 import api from "@/lib/api";
 import DigestSample from "@/components/DigestSample";
+import PrivacyNote from "@/components/PrivacyNote";
 
 const PAGE = "max-w-[1200px] mx-auto px-6 md:px-20";
 
@@ -558,7 +559,10 @@ export default function Dashboard() {
                   We read only the GitHub you approve. Your code never leaves your repos.
                 </p>
               </div>
-              <div className="serif" style={{ fontSize: 20, fontWeight: 700 }}>DEVPULSE</div>
+              <div className="flex flex-col md:items-end gap-2">
+                <div className="serif" style={{ fontSize: 20, fontWeight: 700 }}>DEVPULSE</div>
+                <PrivacyNote style={{ fontSize: 12, color: "var(--color-muted)" }} className="" />
+              </div>
             </div>
           </footer>
         </>

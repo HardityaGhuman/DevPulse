@@ -8,6 +8,7 @@ import { Link, useNavigate, Navigate } from "react-router-dom";
 import { useAuth, SignInButton, SignUpButton } from "@clerk/clerk-react";
 import { motion } from "framer-motion";
 import DigestSample from "@/components/DigestSample";
+import PrivacyNote from "@/components/PrivacyNote";
 
 const PAGE = "max-w-[1200px] mx-auto px-6 md:px-20";
 
@@ -277,6 +278,7 @@ export default function LandingPage() {
           <div className="serif" style={{ fontSize: 24, fontWeight: 700 }}>DEVPULSE</div>
           <div className="flex gap-6">
             <a className="mono" href="https://github.com/HardityaGhuman/DevPulse" target="_blank" rel="noreferrer">GitHub</a>
+            <PrivacyNote />
           </div>
           <div className="mono" style={{ color: "var(--color-muted)" }}>2026 · built for developers</div>
         </div>
